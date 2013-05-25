@@ -1,0 +1,306 @@
+<?php
+
+namespace Application;
+
+class InstancesController extends ResourcesController
+{
+
+    protected $uses = array('Device','Implementation');
+
+	public function __construct(){
+
+		parent::__construct();
+
+		self::loadLibrary('strings-infrastructure');
+	}
+
+	public function create($deviceId=null){
+
+		if(empty($deviceId))
+			throw new InvalidArgumentException('Device id is required');
+
+        $device = $this->Device->get($deviceId);
+        
+        if($device === false)
+            throw new NotFoundException('Device does not exist');
+
+        $deviceAttrs = $device['device_attribute'];
+        $orgId = $device['device.organization_id'];
+
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+
+        //Check the device's status to determine what we should do
+        if(!isset($deviceAttrs['implementation.id'])){
+
+            $providerDevice = $providerDriver->createServer(
+                $device['device.name'],
+                $deviceAttrs['implementation.flavor_id'],
+                $deviceAttrs['implementation.image_id']);
+
+            $providerDeviceId = $providerDevice['id'];
+
+            $this->Device->saveAttribute($orgId,$deviceId,'implementation.id',$providerDeviceId);
+            $this->Device->saveAttribute($orgId,$deviceId,'strings.status','build');
+
+            $this->temporaryFailure("Waiting for device to spin up");
+        }
+        elseif($deviceAttrs['strings.status'] == 'build'){
+
+            //Check if provider build has completed
+            $status = $providerDriver->getServerStatus($deviceAttrs['implementation.id']);
+
+            if($status == 'build'){
+                $this->temporaryFailure("Waiting for device to spin up");
+            }
+            elseif($status == 'active'){
+                $this->createPostConfig($providerDriver,$device);
+            }
+            else {
+                $this->Device->saveAttribute($orgId,$deviceId,'strings.status','error');
+                throw new ServerException("Unexpected server status $status returned by provider. Manual intervention required.");
+            }
+        }
+        else {
+            throw new ClientException('Instance is not in the build state');
+        }
+	}
+
+    protected function getProviderDriver($implementationId,$region){
+
+        $implementation = $this->Implementation->get($implementationId);
+        $implementationAttrs = $implementation['implementation_attribute'];
+
+        $infrastructureProvider = strtolower($implementation['provider.name']);
+
+        $providerDriver = null;
+        switch($infrastructureProvider){
+            case 'rackspace':
+                $connParameters = array(
+                    'credentials' => array(
+                        'username' => $implementationAttrs['username'],
+                        'secret' => $implementationAttrs['api_key']
+                    ),
+                    'region' => $region,
+                    'identityApiEndpoint' => $implementationAttrs['identity_api_endpoint']
+                );
+                $providerDriver = new \StringsInfrastructure\RackspaceInfrastructureDriver($connParameters);
+                break;
+            case 'openstack':
+                throw new ServerException('Not implemented');
+                $connParameters = array();
+                $providerDriver = new \StringsInfrastructure\OpenStackInfrastructureDriver($connParameters);
+                break;
+            default:
+                throw new InvalidArgumentException('Unrecognized provider');
+        }
+
+        return $providerDriver;
+    }
+
+    private function createPostConfig($providerDriver,$device){
+
+        $deviceId = $device['device.id'];
+        $orgId = $device['device.organization_id'];
+        $deviceAttrs = $device['device_attribute'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+
+        $publicIP = $providerDriver->getServerPublicIPv4Address($providerDeviceId);
+        $this->Device->saveAttribute($orgId,$deviceId,'implementation.public_ipv4',$publicIP);
+
+        $privateIP = $providerDriver->getServerPrivateIPv4Address($providerDeviceId);
+        $this->Device->saveAttribute($orgId,$deviceId,'implementation.private_ipv4',$privateIP);
+
+        $this->addDeviceARecord($deviceId);
+
+        $this->Device->saveAttribute($orgId,$deviceId,'strings.status','active'); 
+    }
+
+    private function addDeviceARecord($deviceId){
+
+        $this->loadController('Dns');
+        $dnsController = new DnsController();
+        $dnsController->addDeviceARecord($deviceId);
+    }
+
+	public function resize($deviceId,$flavorId){
+
+       if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
+
+        if(!$this->Device->exists($deviceId))
+            throw new NotFoundException('Device does not exist');
+
+        $device = $this->Device->get($deviceId);
+        $deviceAttrs = $device['device_attribute'];
+
+        $organizationId = $device['device.organization_id'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+        $stringsDeviceStatus = $deviceAttrs['strings.status'];
+
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+
+        if($stringsDeviceStatus == 'active'){
+            $providerDriver->resizeServer($providerDeviceId,$flavorId);
+            $this->Device->saveAttribute($organizationId,$deviceId,'strings.status','resize');
+            throw new TemporaryFailure('Waiting for resize to complete');
+        }
+        elseif($deviceAttrs['strings.status'] == 'resize'){
+            $status = $providerDriver->getServerStatus($providerDeviceId);
+            if($status == 'resize'){
+                $this->temporaryFailure('Waiting for resize to complete');
+            }
+            elseif($status == 'verify_resize'){
+                $this->Device->saveAttribute($organizationId,$deviceId,'implementation.flavor_id',$flavorId);
+                $this->Device->saveAttribute($organizationId,$deviceId,'strings.status','verify_resize');
+            }
+            else {
+                $this->Device->saveAttribute($organizationId,$deviceId,'strings.status','error');
+                throw new UnexpectedProviderStatusException($providerStatus);
+            }
+        }
+        elseif($deviceAttrs['strings.status'] == 'verify_resize'){
+            throw new ClientException("Please confirm the server resize");
+        }
+        else {
+            throw new UnexpectedStringsStatusException($stringsDeviceStatus);
+        }
+	}
+
+    public function confirmResize($deviceId=null,$confirm=null){
+
+        if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
+
+        if(!$this->Device->exists($deviceId))
+            throw new NotFoundException('Device does not exist');
+
+        $confirm = ($confirm == 'false' || $confirm == '0' ? false : true);
+
+        $device = $this->Device->get($deviceId);
+        $deviceAttrs = $device['device_attribute'];
+
+        $organizationId = $device['device.organization_id'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+        $stringsDeviceStatus = $deviceAttrs['strings.status'];
+
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+
+        if($stringsDeviceStatus == 'verify_resize'){
+            if($confirm)
+                $providerDriver->confirmResizeServer($providerDeviceId);
+            else
+                $providerDriver->revertResizeServer($providerDeviceId);
+            $this->Device->saveAttribute($organizationId,$deviceId,'strings.status','active');
+        }
+        else {
+            throw new UnexpectedStringsStatusException($stringsDeviceStatus);
+        }
+    }
+
+	public function rebuild(){
+		throw new \RuntimeException('Not implemented');
+	}
+
+	public function delete($deviceId){
+
+        if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
+
+        if(!$this->Device->exists($deviceId))
+            throw new NotFoundException('Device does not exist');
+
+        $device = $this->Device->get($deviceId);
+        $deviceAttrs = $device['device_attribute'];
+
+        $organizationId = $device['device.organization_id'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+        $stringsDeviceStatus = $deviceAttrs['strings.status'];
+
+        if($stringsDeviceStatus == 'active'){
+
+            $this->removeDeviceARecord($deviceId);
+
+            $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+            $providerDriver->deleteServer($deviceAttrs['implementation.id']);
+
+            $this->Device->delete($deviceId);
+        }
+        else {
+            throw UnexpectedStringsStatusException($stringsDeviceStatus);
+        }
+	}
+
+   private function removeDeviceARecord($deviceId){
+
+        $this->loadController('Dns');
+        $dnsController = new DnsController();
+        $dnsController->removeDeviceARecord($deviceId);
+    } 
+
+	public function reboot($deviceId){
+
+         if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
+
+        if(!$this->Device->exists($deviceId))
+            throw new NotFoundException('Device does not exist');
+
+        $device = $this->Device->get($deviceId);
+        $deviceAttrs = $device['device_attribute'];
+
+        $organizationId = $device['device.organization_id'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+        $jobStatus = $deviceAttrs['strings.job_status'];
+
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+
+        $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+
+        if($deviceStatus == 'active'){
+            if($liveDeviceStatus == 'active'){
+                $providerDriver->rebootServer($providerDeviceId);
+                $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+                $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            }
+            else {
+                throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            }
+        }
+        elseif($deviceStatus == 'reboot'){
+
+            if($liveDeviceStatus == 'reboot')
+                throw new TemporaryFailureException("Waiting for device to reboot");
+            elseif($liveDeviceStatus == 'active')
+                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            else {
+                $this->Device->updateImplementationstatus($device,$liveDeviceStatus);
+                throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            }
+        }
+        else {
+            throw new UnexpectedStringsStatusException($stringsDeviceStatus);
+        }
+	}
+
+	public function getStatus($deviceId){
+
+        if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
+
+        if(!$this->Device->exists($deviceId))
+            throw new NotFoundException('Device does not exist');
+    
+        $device = $this->Device->get($deviceId);
+        $deviceAttrs = $device['device_attribute'];
+
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+
+        $providerStatus = $providerDriver->getServerStatus($providerDeviceId);
+
+       $this->set(array(
+            'status' => $providerStatus
+        )); 
+	}
+}
