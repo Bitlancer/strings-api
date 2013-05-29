@@ -15,12 +15,12 @@ abstract class InfrastructureDriver
 	
 	abstract public function createServer($name,$flavor,$image,$wait=false,$waitTimeout=600);
 	abstract public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600);
-    abstract public function confirmResizeServer($serverID);
-    abstract public function revertResizeServer($serverID);
+    abstract public function confirmResizeServer($serverID,$wait=false,$waitTimeout=600);
+    abstract public function revertResizeServer($serverID,$wait=false,$waitTimeout=600);
 
     abstract public function rebuildServer($serverID,$flavor,$image,$wait=false,$waitTimeout=600);
-    abstract public function deleteServer($serverID);
-    abstract public function rebootServer($serverID);
+    abstract public function deleteServer($serverID,$wait=false,$waitTimeout=600);
+    abstract public function rebootServer($serverID,$wait=false,$waitTimeout=300);
 
 	abstract public function getServerStatus($serverID);
 
@@ -31,6 +31,8 @@ abstract class InfrastructureDriver
 
     abstract public function getServerPublicIPv6Address($serverID);
     abstract public function getServerPrivateIPv6Address($serverID);
+
+    abstract public function getServerIPs($serverID);
 
     abstract public function getServers($filter=array());
 

@@ -40,4 +40,22 @@ class Implementation extends ResourceModel
 
         return $entity;
     }
+
+    public function exists($id){
+
+        $query = "
+            SELECT id
+            FROM implementation
+            WHERE id = :id
+        ";
+
+        $queryParameters = array(
+            ':id' => $id
+        );
+
+        if($this->fetch($query,$queryParameters) === false)
+            return false;
+        else
+            return true;
+    }
 }

@@ -153,8 +153,6 @@ class Service extends Nova
             $url = $this->Url(Server::ResourceName(), $filter);
         }
 
-        print_r($url);
-
         return $this->Collection('\OpenCloud\Compute\Server', $url);
     }
 

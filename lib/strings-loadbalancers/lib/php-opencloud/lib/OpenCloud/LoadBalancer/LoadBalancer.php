@@ -137,8 +137,12 @@ class LoadBalancer extends \OpenCloud\AbstractClass\PersistentObject {
 				\OpenCloud\Base\Lang::translate('Cannot add nodes; no nodes are defined'));
 
 		// iterate through all the nodes
-		foreach($this->nodes as $node)
-			$resp = $node->Create();
+        $resp = '';
+		foreach($this->nodes as $node){
+            if($node instanceof \OpenCloud\LoadBalancer\Resources\Node){
+			    $resp = $node->Create();
+            }
+        }
 		return $resp;
 	}
 

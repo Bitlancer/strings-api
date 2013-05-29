@@ -57,11 +57,8 @@ class InstancesController extends ResourcesController
             }
             elseif($liveDeviceStatus == 'active'){
 
-                $publicIP = $providerDriver->getServerPublicIPv4Address($providerDeviceId);
-                $this->Device->saveAttribute($device,'implementation.public_ipv4',$publicIP);
-
-                $privateIP = $providerDriver->getServerPrivateIPv4Address($providerDeviceId);
-                $this->Device->saveAttribute($device,'implementation.private_ipv4',$privateIP);
+                $ips = $providerDriver->getServerIPs($providerDeviceId);
+                $this->Device->saveIPs($device,$ips);
 
                 $this->addDeviceARecord($device['device.id']);
 
@@ -251,8 +248,21 @@ class InstancesController extends ResourcesController
         if(empty($region))
             throw new InvalidArgumentException('Region is required');
 
-        $providerDriver = $this->getServers
+        $providerDriver = $this->getProviderDriver($implementationId,$region);
 
+        $servers = $providerDriver->getServers();
+
+        //Try to minimize number of DB queries ...
+        //Iterate through the list of servers and group them
+        //by their statuses. Requires a single query per status vs 
+        //a query for each device.
+        $serversGroupedByStatus = array();
+
+        foreach($servers as $server)
+            $serversGroupedByStatus[$server['status']][] = $server['id'];
+
+        foreach($serversGroupedByStatus as $status => $serverIds)
+            $this->Device->setStatusByProviderId($status,$serverIds);
     }
 
     private function addDeviceARecord($deviceId){

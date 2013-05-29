@@ -48,8 +48,11 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 			'flavor' => $this->connection->Flavor($flavor)
 		));
 
-		if($wait)
+		if($wait){
 			$server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
 
 		$server = array(
             'id' => $server->id,
@@ -65,20 +68,36 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 		$flavor = $this->connection->Flavor($flavor);
 		$server->Resize($flavor);
 
-		if($wait)
-			$server->WaitFor('ACTIVE',$waitTimeout);
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+
 	}
 
-    public function confirmResizeServer($serverID){
+    public function confirmResizeServer($serverID,$wait=false,$waitTimeout=600){
 
         $server = $this->connection->Server($serverID);
         $server->ResizeConfirm();
+
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
     }
 
-    public function revertResizeServer($serverID){
+    public function revertResizeServer($serverID,$wait=false,$waitTimeout=600){
 
         $server = $this->connection->Server($serverID);
         $server->ResizeRevert();
+
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
     }
 
 	public function rebuildServer($serverID,$flavorId=false,$imageId=false,$wait=false,$waitTimeout=600){
@@ -96,20 +115,35 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
             'image' => $this->connection->Image($imageId)
         ));
 
-		if($wait)
-			$server->WaitFor('ACTIVE',$waitTimeout);
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
 	}
 	
-	public function deleteServer($serverID){
+	public function deleteServer($serverID,$wait=false,$waitTimeout=600){
 
 		$server = $this->connection->Server($serverID);
-		$server->Delete();	
+		$server->Delete();
+
+        if($wait){
+            $server->WaitFor('DELETED',$waitTimeout);
+            if($server->Status() != 'DELETED')
+                throw new OperationTimeoutException();
+        }
 	}
 	
-	public function rebootServer($serverID){
+	public function rebootServer($serverID,$wait=false,$waitTimeout=300){
 
 		$server = $this->connection->Server($serverID);
 		$server->Reboot();
+
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
 	}
 
 	public function getServerStatus($serverID){
@@ -146,6 +180,26 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         return null;
     }
 
+    public function getServerIPs($serverID){
+
+        $server = $this->connection->Server($serverID);
+
+        $ips = array();
+
+        $ipCollection = $server->ips();
+        foreach($ipCollection as $network => $networkIPs){
+            foreach($networkIPs as $ip){
+
+                if(!isset($ips[$network]))
+                    $ips[$network] = array();
+
+                $ips[$network][$ip->version] = $ip->addr;
+            }
+        }
+
+        return $ips;
+    }
+
     public function getServers($filter=array()){
 
         $servers = array();
@@ -155,7 +209,7 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
             $servers[] = array(
                 'id' => $server->id,
                 'name' => $server->name,
-                'status' => $server->status
+                'status' => $this->toGenericServerStatus($server->status)
             );
         }
 

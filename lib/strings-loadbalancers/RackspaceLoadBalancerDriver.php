@@ -35,13 +35,41 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		return $connection->LoadBalancerService('cloudLoadBalancers',$this->region);
 	}
 
-	public function getLoadBalancers(){
+	public function getLoadBalancers($filter=array()){
 
 		$loadBalancers = array();
 
 		$loadBalancerCollection = $this->connection->LoadBalancerList();
 		while($loadBalancer = $loadBalancerCollection->Next()){
-			$loadBalancers[] = RackspaceLoadBalancer::fromProviderObject($loadBalancer);
+
+            $virtualIps = array();
+            foreach($loadBalancer->virtualIps as $ip){
+                $virtualIps[] = array(
+                    'id' => $ip->id,
+                    'type' => $ip->type,
+                    'address' => $ip->address,
+                    'version' => $ip->ipVersion
+                );
+            }
+
+            $nodes = array();
+            foreach($loadBalancer->nodes as $node){
+                $nodes[] = array(
+                    'id' => $node->id,
+                    'ip' => $node->address,
+                    'port' => $node->port
+                );
+            }
+
+			$loadBalancers[] = array(
+                'id' => $loadBalancer->id,
+                'name' => $loadBalancer->name,
+                'port' => $loadBalancer->port,
+                'protocol' => $loadBalancer->protocol,
+                'algorithm' => $loadBalancer->algorithm,
+                'virtualIps' => $virtualIps,
+                'nodes' => $nodes
+            );
 		}
 
 		return $loadBalancers;
@@ -52,9 +80,8 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		$algorithms = array();
 
 		$algoCollection = $this->connection->AlgorithmList();
-
 		while($algorithm = $algoCollection->Next()){
-			$algorithms[] = RackspaceLoadBalancerAlgorithm::fromProviderObject($algorithm);
+			$algorithms[] = $algorithm->name;
 		}
 
 		return $algorithms;	
@@ -65,37 +92,56 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		$protocols = array();
 
 		$protocolsCollection = $this->connection->ProtocolList();
-		
 		while($protocol = $protocolsCollection->Next()){
-			$protocols[] = RackspaceLoadBalancerProtocol::fromProviderObject($protocol);
+			$protocols[] = array(
+                'name' => $protocol->name,
+                'port' => $protocol->port
+            );
 		}
 
 		return $protocols;
 	}
 			
-	public function create($name,$protocol,$port,$algorithm,$virtualIpType,$nodes,$providerSpecificParameters=array(),$wait=false,$waitTimeout=300){
+	public function create($name,$protocol,$port,$algorithm,$virtualIpType,$nodes,$wait=false,$waitTimeout=300){
 
 		$loadBalancer = $this->connection->LoadBalancer();
-		$loadBalancer->AddVirtualIp($virtualIpType);
-		
-		foreach($nodes as $node){
-			list($nodeIp,$nodePort) = $node;
-			$loadBalancer->AddNode($nodeIp,$nodePort);	
-		}
 
+        $virtualIpType = strtoupper($virtualIpType);
+        if($virtualIpType == 'PRIVATE'){
+            $virtualIpType = 'SERVICENET'; 
+        }
+		$loadBalancer->AddVirtualIp($virtualIpType);
+
+        foreach($nodes as $node){
+            $loadBalancer->AddNode($node['ip'],$node['port']);
+        }
+		
 		$loadBalancer->Create(array(
 			'name' => $name,
 			'protocol' => $protocol,
 			'port' => $port,
-			'algorithm' => $algorithm
+            'algorithm' => $algorithm
 		));
 
-		if($wait)
-			$loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+        if($wait){
+            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+            if($loadBalancer->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+
+        $nodes = array();
+        foreach($loadBalancer->nodes as $node){
+            $nodes[] = array(
+                'id' => $node->id,
+                'ip' => $node->address,
+                'port' => $node->port
+            );
+        }
 
 		return array(
 			'id' => $loadBalancer->id,
-			'name' => $loadBalancer->name
+			'name' => $loadBalancer->name,
+            'nodes' => $nodes 
 		);
 	}
 
@@ -110,10 +156,11 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		$nodes = array();
 
 		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-		while($node = $loadBalancer->Next()){
+        $nodeCollection = $loadBalancer->NodeList();
+		while($node = $nodeCollection->Next()){
 			$nodes[] = array(
-				'id' => $node->Id(),
-				'ipAddress' => $node->address,
+				'id' => $node->id,
+				'ip' => $node->address,
 				'port' => $node->port,
 				'condition' => $node->condition
 			); 
@@ -122,17 +169,47 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		return $nodes;
 	}
 
-    public function addNode($loadBalancer,$node){
+    public function addNode($loadBalancerId,$node,$wait=false,$waitTimeout=300){
 		
 		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-		
-		list($nodeIp,$nodePort) = $node;
-		$loadBalancer->AddNode($nodeIp,$nodePort);
+	
+		$loadBalancer->AddNode($node['ip'],$node['port']);
 		$loadBalancer->AddNodes();
 
+        if($wait){
+            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+            if($loadBalancer->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+
+        $nodes = $this->getNodes($loadBalancerId);
+        foreach($nodes as $n){
+            if($n['ip'] == $node['ip']){
+                return $n;
+            }
+        }
 	}
 
-    public function removeNode($loadBalancer,$node){
-		throw new \RuntimeException('Not implemented');
+    public function removeNode($loadBalancerId,$nodeId,$wait=false,$waitTimeout=300){
+
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        $node = $loadBalancer->Node($nodeId);
+        $node->Delete();
+
+        if($wait){
+            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+            if($loadBalancer->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
 	}
+
+    public function getStatus($loadBalancerId){
+
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        return $this->toGenericStatus($loadBalancer->status);
+    }
+
+    protected function toGenericStatus($status){
+        return strtolower($status);
+    }
 }

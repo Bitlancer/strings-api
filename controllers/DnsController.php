@@ -13,7 +13,6 @@ class DnsController extends ResourcesController
         $this->loadLibrary('strings-dns');
     }
 
-
     public function addDeviceARecord($deviceId=null){
 
         if(empty($deviceId))
@@ -42,7 +41,7 @@ class DnsController extends ResourcesController
             throw new ClientException('External DNS domain has not been configured');
         $deviceFQDN = $hostname . "." . $domain;
 
-        $ipAddress = $deviceAttrs['implementation.public_ipv4'];
+        $ipAddress = $deviceAttrs['implementation.address.public.4'];
 
         $ttl = $this->Config->getOption($organizationId,'dns.external.record_ttl');
         if($ttl === false)

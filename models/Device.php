@@ -85,5 +85,31 @@ class Device extends ResourceModel
         $this->query($query,$queryParameters);
     }
 
+    public function setStatusByProviderId($status,$devices){
 
+        if(!is_array($devices))
+            $devices = array($devices);
+
+        $query = "
+            UPDATE device_attribute as da
+            LEFT JOIN device_attribute as da2 ON da.device_id = da2.device_id
+            SET da.val = ?
+            WHERE da.var = 'implementation.status' AND
+                da2.var = 'implementation.id' AND
+                da2.val IN (" . implode(',',array_fill(0,count($devices),'?')) . ")";
+
+        $queryParameters = array_merge(array($status),$devices);
+
+        $this->query($query,$queryParameters);
+    }
+
+    public function saveIPs($device,$ips){
+        foreach($ips as $network => $networkIps){
+            foreach($networkIps as $version => $address){
+                $network = str_replace(' ','_',$network);
+                $network = str_replace('.','',$network);
+                $this->saveAttribute($device,"implementation.address.$network.$version",$address);
+            }
+        }
+    }
 }
