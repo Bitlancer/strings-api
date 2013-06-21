@@ -4,7 +4,6 @@ namespace Application;
 
 class ResourceModel extends Model
 {
-
     protected function saveAttribute($table,$foreignKey,$organizationId,$modelId,$var,$val){
 
         $query = "

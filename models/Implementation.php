@@ -58,4 +58,56 @@ class Implementation extends ResourceModel
         else
             return true;
     }
+
+    public function getRegionName($implementationId,$regionId){
+
+        $regions = $this->getOverridableAttribute($implementationId, 'regions');
+        if($regions === false)
+            return false;
+
+        $regions = json_decode($regions,true);
+        foreach($regions as $region){
+            if($region['id'] == $regionId){
+                return $region['name'];
+            }
+        }
+
+        return false;
+    }
+
+
+    protected function getOverridableAttribute($implementationId, $attributeVar){
+
+        //Attempt to grab the attribute from implementation_attribute
+        $query = "
+            SELECT val
+            FROM implementation_attribute
+            WHERE var = :var
+        ";
+        $queryParams = array(
+            ':var' => $attributeVar
+        );
+        $result = $this->fetch($query,$queryParams);
+
+        //If failed, grab the default attribute from provider_attribute
+        if($result === false){
+
+            $query = "
+                SELECT val
+                FROM provider_attribute
+                WHERE var = :var
+            ";
+            $queryParams = array(
+                ':var' => $attributeVar
+            );
+
+            $result = $this->fetch($query,$queryParams);
+
+            if($result === false)
+                return false;
+        }
+
+        return $result['provider_attribute.val'];
+    }
+
 }

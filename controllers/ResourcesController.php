@@ -16,5 +16,4 @@ class ResourcesController extends Controller {
 
         return true;
     }
-
 }

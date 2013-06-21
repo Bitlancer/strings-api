@@ -41,7 +41,7 @@ class Controller {
    	}
 
 	public function set($data){
-		$this->data = $data;
+		$this->data = array_merge($this->data,$data);
 	}
 
 	public function render(){
@@ -122,4 +122,10 @@ class Controller {
 
 		throw new ServerException("Failed to load library $library");
 	}
+
+    public function setHeaderValue($header,$value){
+
+        $response = $this->app->response();
+        $response[$header] = $value;
+    }
 }

@@ -8,6 +8,10 @@ namespace APIFramework;
 
 Router::registerRoute('GET','/Test/index','Test','index');
 
+//Formations
+Router::registerRoute(array('GET','POST'),'/Formations/create/:formationId','Formations','create');
+Router::registerRoute(array('GET','POST'),'/Formations/delete/:formationId','Formations','delete');
+
 //Instances
 Router::registerRoute(array('GET','POST'),'/Instances/create/:deviceId','Instances','create');
 Router::registerRoute(array('GET','POST'),'/Instances/delete/:deviceId','Instances','delete');

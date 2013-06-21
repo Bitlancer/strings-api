@@ -27,7 +27,7 @@ class InstancesController extends ResourcesController
         if(isset($deviceAttrs['implementation.status']) && $deviceAttrs['implementation.status'] == 'active')
             throw new ClientException('This device is already running');
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         //Check the device's status to determine what we should do
         if(!isset($deviceAttrs['implementation.id'])){
@@ -63,9 +63,11 @@ class InstancesController extends ResourcesController
                 $this->addDeviceARecord($device['device.id']);
 
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'active');
             }
             else {
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'error');
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
@@ -83,21 +85,44 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
-        if($liveDeviceStatus == 'active'){
-            $providerDriver->resizeServer($providerDeviceId,$flavorId);
+        $getParams = $this->getGetParameters();
+        if(!isset($getParams['state'])){
 
-            $this->Device->saveAttribute($device,'implementation.flavor_id',$flavorId);
+            if($liveDeviceStatus == 'active'){
+                $providerDriver->resizeServer($providerDeviceId,$flavorId);
 
-            $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus); 
+                $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+                $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+                $this->Device->updateStringsStatus($device,'active');
+
+                $this->setHeaderValue('x-bitlancer-url',REQUEST_URL . "?state=waitingForResize");
+                
+                $this->temporaryFailure("Waiting for device resize to complete");
+            }
+            else {
+                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'error');
+                throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            }
         }
         else {
-            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
-            throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            if($liveDeviceStatus == 'active' || $liveDeviceStatus == 'verify_resize'){
+                $this->Device->saveAttribute($device,'implementation.flavor_id',$flavorId);
+                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'active');
+            }
+            elseif($liveDeviceStatus == 'resize'){
+                $this->temporaryFailure("Waiting for device resize to complete");
+            }
+            else {
+                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'error');
+                throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            }
         }
 	}
 
@@ -115,7 +140,7 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
@@ -149,7 +174,7 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
@@ -178,13 +203,38 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
-        $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+        $liveDeviceStatus = '';
+        try {
+            $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+        }
+        catch(\OpenCloud\Base\Exceptions\InstanceNotFound $e){
+            $this->Device->delete($deviceId);
+            return;
+        }
 
-        $this->removeDeviceARecord($deviceId);
-        $providerDriver->deleteServer($deviceAttrs['implementation.id']);
-        $this->Device->delete($deviceId);
+        $getParams = $this->getGetParameters();
+        if(!isset($getParams['state'])){
+            $this->removeDeviceARecord($deviceId);
+            $providerDriver->deleteServer($deviceAttrs['implementation.id']);
+            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            $this->setHeaderValue('x-bitlancer-url',REQUEST_URL . "?state=waitingForDelete");
+            $this->temporaryFailure("Waiting for device delete to complete");
+        }
+        else {
+            if($liveDeviceStatus == 'deleted'){
+                $this->Device->delete($deviceId);     
+            }
+            elseif($liveDeviceStatus == 'error' || $liveDeviceStatus == 'unknown'){
+                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,'error');
+                throw new UnexpectedProviderStatusException($liveDeviceStatus);
+            }
+            else {
+                $this->temporaryFailure("Waiting for device delete to complete");
+            }
+        }
 	}
 
 	public function reboot($deviceId){
@@ -199,7 +249,7 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
@@ -229,7 +279,7 @@ class InstancesController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $providerStatus = $providerDriver->getServerStatus($providerDeviceId);
 
@@ -276,7 +326,11 @@ class InstancesController extends ResourcesController
 
         $this->loadController('Dns');
         $dnsController = new DnsController();
-        $dnsController->removeDeviceARecord($deviceId);
+
+        try{
+            $dnsController->removeDeviceARecord($deviceId);
+        }
+        catch(\Exception $e){}
     }
 
     protected function getProviderDriver($implementationId,$region){

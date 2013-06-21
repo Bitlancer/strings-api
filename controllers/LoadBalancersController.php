@@ -24,7 +24,7 @@ class LoadBalancersController extends ResourcesController
         $device = $this->Device->get($deviceId);
         $deviceAttrs = $device['device_attribute'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         if(!isset($deviceAttrs['implementation.id'])){
 
@@ -83,7 +83,7 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $providerDriver->delete($providerDeviceId);
         $this->Device->delete($deviceId);
@@ -142,7 +142,7 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $nodes = $providerDriver->getNodes($providerDeviceId);
         
@@ -168,7 +168,7 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $node = array(
             'ip' => $nodeIp,
@@ -196,7 +196,7 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_name']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
 
         $providerDriver->removeNode($providerDeviceId,$nodeId,true);
 

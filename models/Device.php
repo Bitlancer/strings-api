@@ -4,11 +4,31 @@ namespace Application;
 
 class Device extends ResourceModel
 {
+
+    public function exists($id){
+
+        $query = "
+            SELECT id
+            FROM device
+            WHERE id = :id
+        ";
+
+        $queryParameters = array(
+            ':id' => $id
+        );
+
+        if($this->fetch($query,$queryParameters) === false)
+            return false;
+        else
+            return true;
+    }
+
     public function get($id){
 
         $query = "
             SELECT *
             FROM device
+            JOIN device_type ON device.device_type_id = device_type.id
             WHERE device.id = :id
         ";
         $queryParameters = array(
@@ -38,22 +58,20 @@ class Device extends ResourceModel
         return $entity;
     }
 
-    public function exists($id){
+    public function getByFormationId($formationId){
 
         $query = "
-            SELECT id
+            SELECT *
             FROM device
-            WHERE id = :id
+            JOIN device_type ON device.device_type_id = device_type.id
+            WHERE device.formation_id = :formationId
         ";
 
         $queryParameters = array(
-            ':id' => $id
+            ':formationId' => $formationId
         );
 
-        if($this->fetch($query,$queryParameters) === false)
-            return false;
-        else
-            return true;
+        return $this->fetchAll($query,$queryParameters);
     }
 
     public function saveAttribute($device,$var,$val){
@@ -66,7 +84,24 @@ class Device extends ResourceModel
 
     public function updateImplementationStatus($device,$status){
 
-        return $this->saveAttribute($device,'implementation.status',$status);
+        $this->saveAttribute($device,'implementation.status',$status);
+        $this->saveAttribute($device,'implementation.status.last_updated',date('Y-m-d H:i:s'));
+    }
+
+    public function updateStringsStatus($device,$status){
+
+        $query = "
+            UPDATE device
+            SET status = :status
+            WHERE id = :id
+        ";
+
+        $queryParameters = array(
+            ':status' => $status,
+            ':id' => $device['device.id']
+        );
+
+        return $this->query($query,$queryParameters);
     }
 
     public function delete($id){
@@ -82,7 +117,7 @@ class Device extends ResourceModel
             ':id' => $id
         );
 
-        $this->query($query,$queryParameters);
+        return $this->query($query,$queryParameters);
     }
 
     public function setStatusByProviderId($status,$devices){

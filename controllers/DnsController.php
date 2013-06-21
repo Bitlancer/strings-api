@@ -23,9 +23,11 @@ class DnsController extends ResourcesController
 
         $device = $this->Device->get($deviceId);
         $organizationId = $device['device.organization_id'];
+        $implementationId = $device['device.implementation_id'];
         $deviceAttrs = $device['device_attribute'];
+        $deviceRegion = $deviceAttrs['implementation.region_id'];
 
-        $dnsRegion = $this->Config->getOption($organizationId,'dns.external.region_name');
+        $dnsRegion = $this->Config->getOption($organizationId,'dns.external.region_id');
         if($dnsRegion === false)
             throw new ClientException('External DNS region has not been configured');
 
@@ -35,11 +37,9 @@ class DnsController extends ResourcesController
         if($domainId === false)
             throw new ClientException('External DNS domain id has not been configured');
 
-        $hostname = $device['device.name'];
-        $domain = $this->Config->getOption($organizationId,'dns.external.domain');
-        if($domain === false)
-            throw new ClientException('External DNS domain has not been configured');
-        $deviceFQDN = $hostname . "." . $domain;
+        if(!isset($deviceAttrs['dns.external.fqdn']))
+            throw new ClientException('Device external FQDN attribute (dns.external.fqdn) is not set');
+        $deviceFQDN = strtolower($deviceAttrs['dns.external.fqdn']);
 
         $ipAddress = $deviceAttrs['implementation.address.public.4'];
 
@@ -66,13 +66,16 @@ class DnsController extends ResourcesController
         $organizationId = $device['device.organization_id'];
         $deviceAttrs = $device['device_attribute'];
 
+        if(!isset($deviceAttrs['dns.external.arecord_id']))
+            throw new ServerException('Device DNS attribute (dns.external.arecord_id) does not exist');
+
         $deviceARecordId = $deviceAttrs['dns.external.arecord_id'];
         
         $domainId = $this->Config->getOption($organizationId,'dns.external.domain_id');
         if($domainId === false)
             throw new ClientException('External DNS region has not been configured');
 
-        $dnsRegion = $this->Config->getOption($organizationId,'dns.external.region_name');
+        $dnsRegion = $this->Config->getOption($organizationId,'dns.external.region_id');
         if($dnsRegion === false)
             throw new ClientException('External DNS region has not been configured');
 

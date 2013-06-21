@@ -11,6 +11,7 @@ if(array_key_exists('HTTPS',$_SERVER) && $_SERVER['HTTPS'] == 'on')
 else
 	define('SCHEME','http://');
 define('SITE_URL',SCHEME . SITE_HOST);
+define('REQUEST_URL',SITE_URL . $_SERVER['REQUEST_URI']);
 
 
 /**
@@ -107,7 +108,14 @@ $app->error(function(\Exception $e) use ($app) {
 		$errorMessage = $e->getMessage();
 	}
 	else {
-		$errorMessage = $e->getMessage() . "\n" . $e->getTraceAsString();
+        $error = array(
+            'exception' => get_class($e),
+            'file_line' => basename($e->getFile()) . "(" . $e->getLine() . ")",
+            'message' => $e->getMessage(),
+            'trace' => $e->getTraceAsString()
+        );
+
+		$errorMessage = json_encode($error);
 	}
 
 	$app->render(
