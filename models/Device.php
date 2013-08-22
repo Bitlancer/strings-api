@@ -189,8 +189,10 @@ class Device extends ResourceModel
             SELECT *
             FROM device
             JOIN device_type ON device.device_type_id = device_type.id
+            JOIN device_attribute ON device.id = device_attribute.device_id
             JOIN role ON device.role_id = role.id
-            WHERE device.formation_id = :formationId
+            WHERE device.formation_id = :formationId AND
+                device_attribute.var = 'dns.internal.fqdn'
         ";
         $queryParameters = array(
             ':formationId' => $formationId

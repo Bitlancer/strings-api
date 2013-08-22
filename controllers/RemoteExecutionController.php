@@ -22,6 +22,7 @@ class RemoteExecutionController extends ResourcesController
         $scriptType = $script['script.type'];
         $scriptUrl = $script['script.url'];
         $scriptPath = $script['script.path'];
+        $scriptParameters = $script['script.parameters'];
 
         //Get the collection of devices associated with this script
         $devices = $this->getAssociatedDevices($script);
@@ -30,7 +31,7 @@ class RemoteExecutionController extends ResourcesController
 
         //Turn the devices into a delimited string that will
         //be passed to the script
-        //$devicesParameter = $this->devicesParameterString($devices);
+        $devicesParameterList = $this->devicesParameterString($devices);
 
         //Select an appropriate jump server to use for this collection of
         //devices.
@@ -44,52 +45,56 @@ class RemoteExecutionController extends ResourcesController
 
         try {
 
-            $defaultSshOptions = "-o StrictHostKeyChecking=no -q";
+             $output = array(
+                'pre-exec' => array(),
+                'exec' => array(),
+                'post-exec' => array()
+            );
 
-            $sshCmd = "ssh remoteexec@$jumpServerFQDN";
-            $sshCmd .= " -i $privateKeyFile";
-            $sshCmd .= " -o StrictHostKeyChecking=no";
-            $sshCmd .= " -q 2>&1";
+            //Wrapper for running SSH commands
+            $execSshCmd = function($remoteCmd) use($jumpServerFQDN,$privateKeyFile){
+
+                $user = REMOTE_EXECUTION_USER;
+                $host = $jumpServerFQDN;
+                $options = "-o StrictHostKeyChecking=no -q";
+
+                $remoteCmd = escapeshellarg($remoteCmd);
+                $sshCmd = "ssh $user@$host -i $privateKeyFile $options $remoteCmd 2>&1"; 
+                exec($sshCmd,$output,$status);
+
+                return array($status,$output);
+            };
 
             //Call the pre-execution script
             $remoteCmd = "~/deploy/pre-exec.sh";
             $remoteCmd .= " -t '$scriptType'";
             $remoteCmd .= " -u '$scriptUrl'";
             $remoteCmd .= " -p '$scriptPath'";
-            list($status,$output) = $this->execRemoteCmdViaSsh(
-                $jumpServerFQDN,
-                REMOTE_EXECUTION_USER,
-                $privateKeyFile,
-                $defaultSshOptions,
-                $remoteCmd);
+            list($status,$output['pre-exec']) = $execSshCmd($remoteCmd);
+            $output['pre-exec']['status'] = $status;
+            if($status == 0){
 
-            //Call the deploy script
-            //ToDo
+                //Call the script
+                $remoteCmd = "~/deploy/exec";
+                $remoteCmd .= " $scriptParameters --server-list $devicesParameterList";
+                list($status,$output['exec']) = $execSshCmd($remoteCmd);
+                $output['exec']['status'] = $status;
 
-            //Call the post-execution script
-            $remoteCmd = "~/deploy/post-exec.sh";
-            list($status,$output) = $this->execRemoteCmdViaSsh(
-                $jumpServerFQDN,
-                REMOTE_EXECUTION_USER,
-                $privateKeyFile,
-                $defaultSshOptions,
-                $remoteCmd);
-  
+                //Call the post-execution script
+                $remoteCmd = "~/deploy/post-exec.sh";
+                list($status,$output['post-exec']) = $execSshCmd($remoteCmd);
+                $output['post-exec']['status'] = $status;
+            }
+
+            $this->set(array(
+                'result' => $output
+            ));
         }
         catch(Exception $e) {
             unlink($privateKeyFile);
             throw $e;
         }
         @unlink($privateKeyFile);
-    }
-
-    private function execRemoteCmdViaSsh($host,$user,$privateKeyFile,$options,$remoteCmd){
-
-        $remoteCmd = escapeshellarg($remoteCmd);
-        $sshCmd = "ssh $user@$host -i $privateKeyFile $options $remoteCmd 2>&1";
-        exec($sshCmd,$output,$status);
-
-        return array($status,$output);
     }
 
     /**
@@ -153,5 +158,25 @@ class RemoteExecutionController extends ResourcesController
             'fqdn' => $jumpServerFQDN,
             'privateKey' => $jumpServer['jump_server.private_key']
         );
+    }
+
+    private function devicesParameterString($devices){
+
+        $devicesParams = array();
+
+        foreach($devices as $device){
+
+            $deviceParams = array();
+
+            $deviceParams[] = $device['device_attribute.val']; //dns.internal.fqdn
+            $deviceParams[] = $device['role.name'];
+            
+            foreach($device['profiles'] as $profile)
+                $deviceParams[] = $profile['profile.name'];
+            
+            $devicesParams[] = implode(',',$deviceParams);
+        }
+
+        return implode("|",$devicesParams);
     }
 }
