@@ -2,14 +2,6 @@
 
 namespace Application;
 
-class UnexpectedProviderStatusException extends ServerException
-{
-    public function __construct($status){
-        $message = "Unexpected provider status \"$status\" encountered";
-        parent::__construct($message);
-    }
-}
-
 class ControllerNotFoundException extends ServerException {}
 
 class ModelNotFoundException extends ServerException {}

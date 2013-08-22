@@ -52,7 +52,7 @@ require CORE_DIR . DS . 'DatabaseHandler.php';
  * Load configurations
  */
 require CONFIG_DIR . DS . 'Exceptions.php';
-
+require CONFIG_DIR . DS . 'UserDefined.php';
 
 /**
  * Instantiate slim config

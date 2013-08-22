@@ -33,3 +33,6 @@ Router::registerRoute(array('GET','POST'),'/LoadBalancers/removeNode/:deviceId/:
 
 //DNS
 Router::registerRoute(array('GET','POST'),'/Dns/addDeviceARecord/:deviceId','Dns','addDeviceARecord');
+
+//Remote execution
+Router::registerRoute(array('GET','POST'),'/RemoteExecution/run/:scriptId','RemoteExecution','run');
