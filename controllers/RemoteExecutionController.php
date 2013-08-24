@@ -45,7 +45,7 @@ class RemoteExecutionController extends ResourcesController
 
         try {
 
-             $output = array(
+             $results = array(
                 'pre-exec' => array(),
                 'exec' => array(),
                 'post-exec' => array()
@@ -67,28 +67,35 @@ class RemoteExecutionController extends ResourcesController
 
             //Call the pre-execution script
             $remoteCmd = "~/deploy/pre-exec.sh";
-            $remoteCmd .= " -t '$scriptType'";
-            $remoteCmd .= " -u '$scriptUrl'";
-            $remoteCmd .= " -p '$scriptPath'";
-            list($status,$output['pre-exec']) = $execSshCmd($remoteCmd);
-            $output['pre-exec']['status'] = $status;
+            $remoteCmd .= " --source-type '$scriptType'";
+            $remoteCmd .= " --url '$scriptUrl'";
+            $remoteCmd .= " --path '$scriptPath'";
+            list($status,$output) = $execSshCmd($remoteCmd);
+            $results['pre-exec'] = array(
+                'status' => $status,
+                'output' => $output
+            );
             if($status == 0){
 
                 //Call the script
                 $remoteCmd = "~/deploy/exec";
                 $remoteCmd .= " $scriptParameters --server-list $devicesParameterList";
-                list($status,$output['exec']) = $execSshCmd($remoteCmd);
-                $output['exec']['status'] = $status;
+                list($status,$output) = $execSshCmd($remoteCmd);
+                $results['exec'] = array(
+                    'status' => $status,
+                    'output' => $output
+                );
 
                 //Call the post-execution script
                 $remoteCmd = "~/deploy/post-exec.sh";
-                list($status,$output['post-exec']) = $execSshCmd($remoteCmd);
-                $output['post-exec']['status'] = $status;
+                list($status,$output) = $execSshCmd($remoteCmd);
+                $results['post-exec'] = array(
+                    'status' => $status,
+                    'output' => $output
+                );
             }
 
-            $this->set(array(
-                'result' => $output
-            ));
+            $this->set($results);
         }
         catch(Exception $e) {
             unlink($privateKeyFile);
