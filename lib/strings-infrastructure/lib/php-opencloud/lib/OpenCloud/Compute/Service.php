@@ -13,9 +13,9 @@
 namespace OpenCloud\Compute;
 
 use OpenCloud\OpenStack;
-use OpenCloud\Base\Lang;
-use OpenCloud\AbstractClass\Nova;
-use OpenCloud\Base\Exceptions;
+use OpenCloud\Common\Lang;
+use OpenCloud\Common\Nova;
+use OpenCloud\Common\Exceptions;
 
 /**
  * The Compute class represents the OpenStack Nova service.
@@ -67,7 +67,7 @@ class Service extends Nova
      */
     public function __construct(OpenStack $conn, $serviceName, $serviceRegion, $urltype) 
     {
-        $this->debug(Lang::translate('initializing Compute...'));
+        $this->getLogger()->info(Lang::translate('Initializing compute...'));
         
         parent::__construct(
             $conn,

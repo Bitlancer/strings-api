@@ -13,9 +13,9 @@
 
 namespace OpenCloud\Compute;
 
-use OpenCloud\Base\Lang;
-use OpenCloud\Base\Metadata;
-use OpenCloud\Base\Exceptions;
+use OpenCloud\Common\Lang;
+use OpenCloud\Common\Metadata;
+use OpenCloud\Common\Exceptions;
 
 /**
  * This class handles server metadata
@@ -26,7 +26,7 @@ use OpenCloud\Base\Exceptions;
  *
  * @author Glen Campbell <glen.campbell@rackspace.com>s
  */
-class ServerMetadata extends Metadata 
+class ServerMetadata extends Metadata
 {
 
     private $_parent;   // the parent object
@@ -40,7 +40,7 @@ class ServerMetadata extends Metadata
      * @param string $key the (optional) key for the metadata item
      * @throws MetadataError
      */
-    public function __construct(Server $parent, $key = NULL) 
+    public function __construct(Server $parent, $key = NULL)
     {
         // construct defaults
         $this->_parent = $parent;
@@ -54,15 +54,21 @@ class ServerMetadata extends Metadata
             $response = $this->Parent()->Service()->Request($this->Url());
 
             // check the response
-            if ($response->HttpStatus() >= 300) {
+            if ($response->httpStatus() >= 300) {
                 throw new Exceptions\MetadataError(sprintf(
                     Lang::translate('Unable to retrieve metadata [%s], response [%s]'),
-                    $this->Url(), 
+                    $this->Url(),
                     $response->HttpBody()
                 ));
             }
 
-            $this->debug(Lang::translate('Metadata for [%s] is [%s]'), $this->Url(), $response->HttpBody());
+            $this->getLogger()->info(
+                Lang::translate('Metadata for [{url}] is [{body}]'), 
+                array(
+                    'url'  => $this->url(), 
+                    'body' => $response->httpBody()
+                )
+            );
 
             // parse and assign the server metadata
             $obj = json_decode($response->HttpBody());
@@ -79,9 +85,10 @@ class ServerMetadata extends Metadata
      * Returns the URL of the metadata (key or block)
      *
      * @return string
+     * @param string $subresource not used; required for strict compatibility
      * @throws ServerUrlerror
      */
-    public function Url() 
+    public function Url($subresource='')
     {
         if (!isset($this->_url)) {
             throw new Exceptions\ServerUrlError(Lang::translate('Metadata has no URL (new object)'));
@@ -104,7 +111,7 @@ class ServerMetadata extends Metadata
      * @return void
      * @throws MetadataCreateError
      */
-    public function Create() 
+    public function Create()
     {
         // perform the request
         $response = $this->parent()->Service()->Request(
@@ -116,9 +123,9 @@ class ServerMetadata extends Metadata
 
         // check the response
         if ($response->HttpStatus() >= 300) {
-            throw new \OpenCloud\Base\Exceptions\MetadataCreateError(sprintf(
+            throw new \OpenCloud\Common\Exceptions\MetadataCreateError(sprintf(
                 Lang::translate('Error setting metadata on [%s], response [%s]'),
-                $this->Url(), 
+                $this->Url(),
                 $response->HttpBody()
             ));
         }
@@ -131,7 +138,7 @@ class ServerMetadata extends Metadata
      * @return void
      * @throws MetadataUpdateError
      */
-    public function Update() 
+    public function Update()
     {
         // perform the request
         $response = $this->parent()->Service()->Request(
@@ -145,7 +152,7 @@ class ServerMetadata extends Metadata
         if ($response->HttpStatus() >= 300) {
             throw new Exceptions\MetadataUpdateError(sprintf(
                 Lang::translate('Error updating metadata on [%s], response [%s]'),
-                $this->Url(), 
+                $this->Url(),
                 $response->HttpBody()
             ));
         }
@@ -158,7 +165,7 @@ class ServerMetadata extends Metadata
      * @return void
      * @throws MetadataDeleteError
      */
-    public function Delete() 
+    public function Delete()
     {
         // perform the request
         $response = $this->parent()->Service()->Request(
@@ -171,7 +178,7 @@ class ServerMetadata extends Metadata
         if ($response->HttpStatus() >= 300) {
             throw new Exceptions\MetadataDeleteError(sprintf(
                 Lang::translate('Error deleting metadata on [%s], response [%s]'),
-                $this->Url(), 
+                $this->Url(),
                 $response->HttpBody()
             ));
         }
@@ -182,7 +189,7 @@ class ServerMetadata extends Metadata
      *
      * @return Server
      */
-    public function Parent() 
+    public function Parent()
     {
         return $this->_parent;
     }
@@ -196,7 +203,7 @@ class ServerMetadata extends Metadata
      * @return void
      * @throws MetadataKeyError
      */
-    public function __set($key, $value) 
+    public function __set($key, $value)
     {
         // if a key was supplied when creating the object, then we can't set
         // any other values
@@ -219,7 +226,7 @@ class ServerMetadata extends Metadata
      * @return string
      * @throws MetadataJsonError
      */
-    private function GetMetadataJson() 
+    private function GetMetadataJson()
     {
         $obj = new \stdClass();
 
@@ -235,7 +242,7 @@ class ServerMetadata extends Metadata
         }
 
         $json = json_encode($obj);
-        
+
         if ($this->CheckJsonError()) {
             throw new Exceptions\MetadataJsonError(Lang::translate('Unable to encode JSON for metadata'));
         } else {

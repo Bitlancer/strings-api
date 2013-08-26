@@ -39,6 +39,11 @@ abstract class InfrastructureDriver
 	abstract public function getImages();
 	abstract public function getFlavors(); 
 
+    abstract public function getImageSchedule($serverID);
+    abstract public function createImageSchedule($serverID,$retention);
+    abstract public function updateImageSchedule($serverID,$retention);
+    abstract public function deleteImageSchedule($serverID);
+
 	public static function validDataStructure($validDataStruc,$compDataStruc){
 
         if($diff = array_diff_key($validDataStruc,$compDataStruc))

@@ -12,7 +12,7 @@
 
 namespace OpenCloud\LoadBalancer;
 
-use OpenCloud\AbstractClass\Nova;
+use OpenCloud\Common\Nova;
 use OpenCloud\OpenStack;
 
 /**
@@ -63,7 +63,7 @@ class Service extends Nova
      * @param string $id the identifier of the load balancer
      * @return LoadBalancerService\LoadBalancer
      */
-    public function LoadBalancer($id = NULL) 
+    public function LoadBalancer($id = null) 
     {
         return new LoadBalancer($this, $id);
     }

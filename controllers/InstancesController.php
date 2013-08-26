@@ -5,7 +5,7 @@ namespace Application;
 class InstancesController extends ResourcesController
 {
 
-    protected $uses = array('Device','Implementation');
+    protected $uses = array('Device','Implementation','Config');
 
 	public function __construct(){
 
@@ -61,6 +61,8 @@ class InstancesController extends ResourcesController
                 $this->Device->saveIPs($device,$ips);
 
                 $this->addDeviceARecord($device['device.id']);
+
+                $this->maybeScheduleImageBackups($device['device.id']);
 
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'active');
@@ -209,7 +211,7 @@ class InstancesController extends ResourcesController
         try {
             $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
         }
-        catch(\OpenCloud\Base\Exceptions\InstanceNotFound $e){
+        catch(\OpenCloud\Common\Exceptions\InstanceNotFound $e){
             $this->Device->delete($deviceId);
             return;
         }
@@ -331,6 +333,28 @@ class InstancesController extends ResourcesController
             $dnsController->removeDeviceARecord($deviceId);
         }
         catch(\Exception $e){}
+    }
+
+    private function maybeScheduleImageBackups($deviceId){
+
+        $device = $this->Device->get($deviceId);
+        $organizationId = $device['device.organization_id'];
+        $deviceAttrs = $device['device_attribute'];
+        $providerDeviceId = $deviceAttrs['implementation.id'];
+
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']); 
+
+        $retention = $this->Config->getOption(
+            $organizationId,
+            'implementation.image_schedule.retention'
+        );
+
+        if(empty($retention))
+            return;
+
+        $providerDriver->createImageSchedule($providerDeviceId,$retention);
     }
 
     protected function getProviderDriver($implementationId,$region){

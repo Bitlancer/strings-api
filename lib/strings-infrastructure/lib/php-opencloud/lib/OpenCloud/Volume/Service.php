@@ -12,10 +12,8 @@
 
 namespace OpenCloud\Volume;
 
-use OpenCloud\AbstractClass\Nova;
 use OpenCloud\OpenStack;
-use OpenCloud\Base\Lang;
-use OpenCloud\Base\Exceptions;
+use OpenCloud\Common\Nova;
 
 class Service extends Nova 
 {

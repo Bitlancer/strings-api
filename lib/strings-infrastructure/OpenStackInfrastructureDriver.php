@@ -253,4 +253,31 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         return $flavor->id;
     }
 
+    public function getImageSchedule($serverID){
+
+        $server = $this->connection->Server($serverID);
+        return $server->imageSchedule();
+    }
+
+    public function createImageSchedule($serverID,$retention){
+
+        $this->modifyImageSchedule($serverID,$retention);
+    }
+
+    public function updateImageSchedule($serverID,$retention){
+
+        $this->modifyImageSchedule($serverID,$retention);
+    }
+
+    public function deleteImageSchedule($serverID){
+
+        $this->modifyImageSchedule($serverID,$retention);
+    }
+
+    private function modifyImageSchedule($serverID,$retention=false){
+
+        $server = $this->connection->Server($serverID);
+        return $server->imageSchedule($retention);
+    }
+
 }

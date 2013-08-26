@@ -3,8 +3,8 @@
 namespace OpenCloud\ObjectStore;
 
 use OpenCloud\OpenStack;
-use OpenCloud\Base\Exceptions;
-use OpenCloud\Base\Lang;
+use OpenCloud\Common\Exceptions;
+use OpenCloud\Common\Lang;
 
 /**
  * This is the CDN related to the ObjectStore
@@ -35,7 +35,7 @@ class ObjectStoreCDN extends ObjectStoreBase
         OpenStack $connection,
         $serviceName = RAXSDK_OBJSTORE_NAME,
         $serviceRegion = RAXSDK_OBJSTORE_REGION,
-        $urltype = RAXSDK_OBJSTORE_URLTYPE
+        $urltype = RAXSDK_URL_PUBLIC
     ) {
 
         // call the parent contructor

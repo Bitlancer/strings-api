@@ -3,8 +3,8 @@
 namespace OpenCloud\ObjectStore;
 
 use OpenCloud\OpenStack;
-use OpenCloud\Base\Exceptions;
-use OpenCloud\Base\Lang;
+use OpenCloud\Common\Exceptions;
+use OpenCloud\Common\Lang;
 
 /**
  * ObjectStore - this defines the object-store (Cloud Files) service.
@@ -51,7 +51,7 @@ class Service extends ObjectStoreBase
         $serviceRegion = RAXSDK_OBJSTORE_REGION,
         $urltype = RAXSDK_OBJSTORE_URLTYPE
     ) {
-        $this->debug(Lang::translate('initializing ObjectStore...'));
+        $this->getLogger()->info('Initializing ObjectStore...');
 
         // call the parent contructor
         parent::__construct(

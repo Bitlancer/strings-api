@@ -12,9 +12,9 @@
 
 namespace OpenCloud\DNS;
 
-use OpenCloud\AbstractClass\PersistentObject;
-use OpenCloud\Base\Lang;
-use OpenCloud\Base\Exceptions;
+use OpenCloud\Common\PersistentObject;
+use OpenCloud\Common\Lang;
+use OpenCloud\Common\Exceptions;
 
 /**
  * The DnsObject class is an extension of the PersistentObject class that
@@ -85,6 +85,7 @@ abstract class Object extends PersistentObject
         $object->{self::JsonCollectionName()} = array(
             $this->GetJson($this->_create_keys)
         );
+        
         return $object;
     }
 

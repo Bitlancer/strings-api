@@ -12,9 +12,9 @@
 
 namespace OpenCloud\ObjectStore;
 
-use OpenCloud\Base\Lang;
-use OpenCloud\Base\Exceptions;
-use OpenCloud\AbstractClass\ObjectStore;
+use OpenCloud\Common\Lang;
+use OpenCloud\Common\Exceptions;
+use OpenCloud\Common\ObjectStore;
 
 /**
  * A DataObject is an object in the ObjectStore
@@ -34,7 +34,7 @@ class DataObject extends ObjectStore
     public $content_type;       // Content-Type:
     public $content_length;     // Content-Length:
     public $extra_headers;      // Other headers, eg. Access-Control-Allow-Origin:
-    public $send_etag = TRUE;   // Whether or not to calculate and send an etag on Create.
+    public $send_etag = true;   // Whether or not to calculate and send an etag on Create.
 
     private $data;           // the actual data
     private $etag;           // the ETag
@@ -59,7 +59,7 @@ class DataObject extends ObjectStore
      *      the service.
      * @return void
      */
-    public function __construct($container, $cdata = NULL)
+    public function __construct($container, $cdata = null)
     {
         parent::__construct();
 
@@ -75,7 +75,7 @@ class DataObject extends ObjectStore
             }
         } elseif (isset($cdata)) {
             $this->name = $cdata;
-            $this->Fetch();
+            $this->fetch();
         }
     }
 
@@ -85,10 +85,11 @@ class DataObject extends ObjectStore
      * If the object is new and doesn't have a name, then an exception is
      * thrown.
      *
+     * @param string $subresource Not used
      * @return string
      * @throws NoNameError
      */
-    public function Url()
+    public function Url($subresource = '')
     {
         if (!$this->name) {
             throw new Exceptions\NoNameError(Lang::translate('Object has no name'));
@@ -113,7 +114,7 @@ class DataObject extends ObjectStore
      * @return boolean
      * @throws CreateUpdateError
      */
-    public function Create($params = array(), $filename = null)
+    public function Create($params = array(), $filename = null, $extractArchive = null)
     {
         // set/validate the parameters
         $this->SetParams($params);
@@ -149,7 +150,10 @@ class DataObject extends ObjectStore
                 $this->etag = md5_file($filename);
             }
 
-            $this->debug('Uploading %u bytes from %s', $filesize, $filename);
+            $this->getLogger()->info('Uploading {size} bytes from {name}', array(
+                'size' => $filesize, 
+                'name' => $filename
+            ));
         } else {
             // compute the length
             $this->content_length = strlen($this->data);
@@ -160,9 +164,17 @@ class DataObject extends ObjectStore
 
         }
 
-        // flag missing Content-Type
-        if (empty($this->content_type)) {
-            $this->content_type = 'application/octet-stream';
+        // Only allow supported archive types
+        // http://docs.rackspace.com/files/api/v1/cf-devguide/content/Extract_Archive-d1e2338.html
+        $extractArchiveUrlArg = '';
+        if ($extractArchive) {
+            if ($extractArchive !== "tar.gz" && $extractArchive !== "tar.bz2") {
+                throw new Exceptions\ObjectError("Extract Archive only supports tar.gz and tar.bz2");
+            } else {
+                $extractArchiveUrlArg = "?extract-archive=" . $extractArchive;
+                $this->etag = null;
+                $this->content_type = '';
+            }
         }
 
         // set the headers
@@ -172,7 +184,10 @@ class DataObject extends ObjectStore
             $headers['ETag'] = $this->etag;
         }
 
-        $headers['Content-Type'] = $this->content_type;
+		// Content-Type is no longer required; if not specified, it will
+		// attempt to guess based on the file extension.
+		if (isset($this->content_type))
+        	$headers['Content-Type'] = $this->content_type;
         $headers['Content-Length'] = $this->content_length;
 
         // copy any extra headers
@@ -184,7 +199,7 @@ class DataObject extends ObjectStore
 
         // perform the request
         $response = $this->Service()->Request(
-            $this->Url(),
+            $this->Url() . $extractArchiveUrlArg,
             'PUT',
             $headers,
             $fp ? $fp : $this->data
@@ -194,7 +209,7 @@ class DataObject extends ObjectStore
         if (($stat = $response->HttpStatus()) >= 300) {
             throw new Exceptions\CreateUpdateError(sprintf(
                 Lang::translate('Problem saving/updating object [%s] HTTP status [%s] response [%s]'),
-                $this->Url(),
+                $this->Url() . $extractArchiveUrlArg,
                 $stat,
                 $response->HttpBody()
             ));
@@ -314,7 +329,7 @@ class DataObject extends ObjectStore
     {
         $uri = sprintf('/%s/%s', $target->Container()->Name(), $target->Name());
 
-        $this->debug('Copying object to [%s]', $uri);
+        $this->getLogger()->info('Copying object to [{uri}]', array('uri' => $uri));
 
         $response = $this->Service()->Request(
             $this->Url(),
@@ -375,24 +390,31 @@ class DataObject extends ObjectStore
                 break;
             default:
                 throw new Exceptions\TempUrlMethodError(sprintf(
-                    Lang::translate('Bad method [%s] for TempUrl; only GET or PUT supported'),
+                    Lang::translate(
+                    'Bad method [%s] for TempUrl; only GET or PUT supported'),
                     $method
                 ));
         }
 
         // construct the URL
         $url = $this->Url();
-        $path = parse_url($url, PHP_URL_PATH);
+        $path = urldecode(parse_url($url, PHP_URL_PATH));
 
         $hmac_body = "$method\n$expiry_time\n$path";
         $hash = hash_hmac('sha1', $hmac_body, $secret);
 
-        $this->debug('URL [%s] SIG [%s] HASH [%s]', $url, $hmac_body, $hash);
+        $this->getLogger()->info('URL [{url}]; SIG [{sig}]; HASH [{hash}]', array(
+            'url'  => $url, 
+            'sig'  => $hmac_body, 
+            'hash' => $hash
+        ));
 
         $temp_url = sprintf('%s?temp_url_sig=%s&temp_url_expires=%d', $url, $hash, $expiry_time);
 
         // debug that stuff
-        $this->debug('TempUrl generated [%s]', $temp_url);
+        $this->getLogger()->info('TempUrl generated [{url}]', array(
+            'url' => $temp_url
+        ));
 
         return $temp_url;
     }
@@ -463,6 +485,50 @@ class DataObject extends ObjectStore
         fclose($fp);
         return $result;
     }
+
+    /**
+     * Saves the object's to a stream filename
+     *
+     * Given a local filename, the Object's data will be written to the stream
+     *
+     * Example:
+     * <code>
+     * # ... authentication/connection/container code excluded
+     * # ... see previous examples
+     *
+     * # If I want to write the README to a temporary memory string I
+     * # do :
+     * #
+     * $my_docs = $conn->get_container("documents");
+     * $doc = $my_docs->DataObject(array("name"=>"README"));
+     *
+     * $fp = fopen('php://temp', 'r+');
+     * $doc->SaveToStream($fp);
+     * fclose($fp);
+     * </code>
+     *
+     * @param string $filename name of local file to write data to
+     * @return boolean <kbd>TRUE</kbd> if successful
+     * @throws IOException error opening file
+     * @throws InvalidResponseException unexpected response
+     */
+    public function SaveToStream($resource)
+    {
+        if (!is_resource($resource)) {
+            throw new \Exceptions\ObjectError(
+                Lang::translate("Resource argument not a valid PHP resource."
+             ));
+        }
+
+        $result = $this->Service()->Request(
+            $this->Url(),
+            'GET',
+            array(),
+            $resource
+        );
+        return $result;
+    }
+
 
     /**
      * Returns the object's MD5 checksum

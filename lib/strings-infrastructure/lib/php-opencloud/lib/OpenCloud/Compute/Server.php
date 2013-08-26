@@ -12,10 +12,10 @@
 
 namespace OpenCloud\Compute;
 
-use OpenCloud\AbstractClass\PersistentObject;
+use OpenCloud\Common\PersistentObject;
 use OpenCloud\Volume\Volume;
-use OpenCloud\Base\Exceptions;
-use OpenCloud\Base\Lang;
+use OpenCloud\Common\Exceptions;
+use OpenCloud\Common\Lang;
 
 /**
  * The Server class represents a single server node.
@@ -27,7 +27,7 @@ use OpenCloud\Base\Lang;
  * @api
  * @author Glen Campbell <glen.campbell@rackspace.com>
  */
-class Server extends PersistentObject 
+class Server extends PersistentObject
 {
     // Ideally these should have data types defined in docblocks
 
@@ -73,7 +73,7 @@ class Server extends PersistentObject
      * @throws ServerNotFound if a 404 is returned
      * @throws UnknownError if another error status is reported
      */
-    public function __construct(Service $service, $info = null) 
+    public function __construct(Service $service, $info = null)
     {
         // make the service persistent
         parent::__construct($service, $info);
@@ -95,7 +95,7 @@ class Server extends PersistentObject
      * @param integer $ip_type the type of IP version (4 or 6) to return
      * @return string IP address
      */
-    public function ip($ip_type = RAXSDK_DEFAULT_IP_VERSION) 
+    public function ip($ip_type = RAXSDK_DEFAULT_IP_VERSION)
     {
         switch($ip_type) {
             case 4:
@@ -113,38 +113,37 @@ class Server extends PersistentObject
      * @api
      * @param array $params - an associative array of key/value pairs of
      *      attributes to set on the new server
-     * @param boolean $rebuild - if TRUE, performs a rebuild of an existing
-     *      server
      * @return HttpResponse - this will include the administrative password
      *      in the body
      * @throws \OpenCloud\HttpError
      * @throws ServerCreateError
      * @throws UnknownError
      */
-    public function Create($params = array(), $rebuild = false) 
+    public function Create($params = array())
     {
         // reset values
         $this->id = null;
         $this->status = null;
-
-        foreach($params as $key => $value) {
-            $this->$key = $value;
-        }
+        
+        $this->populate($params);
 
         $this->metadata->sdk = RAXSDK_USER_AGENT;
         $this->imageRef = $this->image->links[0]->href;
         $this->flavorRef = $this->flavor->links[0]->href;
 
-        $this->debug(Lang::translate('Server::Create() [%s]'), $this->name);
+        $this->getLogger()->info(Lang::translate('Server::Create() [{name}]'), array(
+            'name' => $this->name
+        ));
 
-        $create = $this->CreateJson( $rebuild ? 'rebuild' : 'server' );
-        $response = $this->Service()->Request($this->Service()->Url(), 'POST', array(), $create);
+        $create = $this->createJson($params);
+
+        $response = $this->Service()->Request(
+        	$this->Service()->Url(), 'POST', array(), $create);
 
         if (!is_object($response)) {
-            throw new Exceptions\HttpError(sprintf(
-                Lang::translate('Invalid response for Server::%s() request'),
-                $rebuild ? 'Rebuild' : 'Create'
-            ));
+            throw new Exceptions\HttpError(
+                Lang::translate('Invalid response for Server::Create() request')
+            );
         }
 
         $json = $response->HttpBody();
@@ -177,9 +176,19 @@ class Server extends PersistentObject
      * @param array $params - an associative array of key/value pairs of
      *      attributes to set on the new server
      */
-    public function Rebuild($params = array()) 
+    public function Rebuild($params = array())
     {
-        return $this->Create($params, true);
+    	if (!isset($params['adminPass']))
+    		throw new Exceptions\RebuildError(
+    			Lang::Translate('adminPass required when rebuilding server'));
+    	if (!isset($params['image']))
+    		throw new Exceptions\RebuildError(
+    			Lang::Translate('image required when rebuilding server'));
+    	$obj = new \stdClass();
+    	$obj->rebuild = new \stdClass();
+    	$obj->rebuild->imageRef = $params['image']->Id();
+    	$obj->rebuild->adminPass = $params['adminPass'];
+        return $this->Action($obj);
     }
 
     /**
@@ -196,7 +205,7 @@ class Server extends PersistentObject
      *      indicate the type of reboot
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function Reboot($type = RAXSDK_SOFT_REBOOT) 
+    public function Reboot($type = RAXSDK_SOFT_REBOOT)
     {
         // create object and json
         $obj = new \stdClass();
@@ -213,10 +222,11 @@ class Server extends PersistentObject
      * @param array $metadata Optional metadata to be stored on the image
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function CreateImage($name, $metadata = array()) 
+    public function CreateImage($name, $metadata = array())
     {
         if (!strlen($name)) {
-            throw new Exceptions\ImageError(Lang::translate('Image name is required to create an image'));
+            throw new Exceptions\ImageError(
+            	Lang::translate('Image name is required to create an image'));
         }
 
         // construct a createImage object for jsonization
@@ -243,13 +253,64 @@ class Server extends PersistentObject
     }
 
     /**
+     * Schedule daily image backups
+     *
+     * @api
+     * @param mixed $retention - false (default) indicates you want to
+     *      retrieve the image schedule. $retention <= 0 indicates you
+     *      want to delete the current schedule. $retention > 0 indicates
+     *      you want to schedule image backups and you would like to
+     *      retain $retention backups.
+     * @return mixed an object or FALSE on error
+     * @throws ServerImageScheduleError if an error is encountered
+     */
+    public function imageSchedule($retention = false)
+    {
+        $url = Lang::noslash($this->url('rax-si-image-schedule'));
+
+        $response = null;
+
+        if ($retention === false) { 
+            // Get current retention
+            $response = $this->getService()->request($url);
+        } elseif ($retention <= 0) { 
+            // Delete image schedule
+            $response = $this->getService()->request($url, 'DELETE');
+        } else { 
+            // Set image schedule
+            $object = new \stdClass();
+            $object->image_schedule = new \stdClass();
+            $object->image_schedule->retention = $retention;
+            
+            $response = $this->getService()->request($url, 'POST', array(), json_encode($object));
+        }
+
+        if ($response->HttpStatus() >= 300) {
+            throw new Exceptions\ServerImageScheduleError(sprintf(
+                Lang::translate('Error in Server::ImageSchedule(), status [%d], response [%s]'),
+                $response->HttpStatus(),
+                $response->HttpBody()
+            ));
+            return false;
+        }
+
+        $object = json_decode($response->HttpBody());
+        
+        if ($object && property_exists($object, 'image_schedule'))
+            return $object->image_schedule;
+        else {
+            return new \stdClass();
+        }
+    }
+
+    /**
      * Initiates the resize of a server
      *
      * @api
      * @param Flavor $flavorRef a Flavor object indicating the new server size
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function Resize(Flavor $flavorRef) 
+    public function Resize(Flavor $flavorRef)
     {
         // construct a resize object for jsonization
         $obj = new \stdClass();
@@ -264,7 +325,7 @@ class Server extends PersistentObject
      * @api
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function ResizeConfirm() 
+    public function ResizeConfirm()
     {
         $obj = new \stdClass();
         $obj->confirmResize = null;
@@ -279,7 +340,7 @@ class Server extends PersistentObject
      * @api
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function ResizeRevert() 
+    public function ResizeRevert()
     {
         $obj = new \stdClass();
         $obj->revertResize = null;
@@ -293,7 +354,7 @@ class Server extends PersistentObject
      * @param string $newpasswd The new root password for the server
      * @return boolean TRUE on success; FALSE on failure
      */
-    public function SetPassword($newpasswd) 
+    public function SetPassword($newpasswd)
     {
         // construct an object to hold the password
         $obj = new \stdClass();
@@ -311,11 +372,11 @@ class Server extends PersistentObject
      * @throws ServerActionError if the server has no ID (i.e., has not
      *      been created yet)
      */
-    public function Rescue() 
+    public function Rescue()
     {
         $this->CheckExtension('os-rescue');
-        
-        if (!isset($this->id)) { 
+
+        if (!isset($this->id)) {
             throw new Exceptions\ServerActionError(Lang::translate('Server has no ID; cannot Rescue()'));
         }
 
@@ -330,7 +391,7 @@ class Server extends PersistentObject
         } elseif (!isset($newobj->adminPass)) {
             throw new Exceptions\ServerActionError(sprintf(
                 Lang::translate('Rescue() method failed unexpectedly, status [%s] response [%s]'),
-                $resp->HttpStatus(), 
+                $resp->HttpStatus(),
                 $resp->HttpBody()
             ));
         } else {
@@ -347,10 +408,10 @@ class Server extends PersistentObject
      * @throws ServerActionError if the server has no ID (i.e., has not
      *      been created yet)
      */
-    public function Unrescue() 
+    public function Unrescue()
     {
         $this->CheckExtension('os-rescue');
-        
+
         if (!isset($this->id)) {
             throw new Exceptions\ServerActionError(Lang::translate('Server has no ID; cannot Unescue()'));
         }
@@ -373,7 +434,7 @@ class Server extends PersistentObject
      * @return OpenCloud\Compute\Metadata object
      * @throws MetadataError
      */
-    public function Metadata($key = null) 
+    public function Metadata($key = null)
     {
         return new ServerMetadata($this, $key);
     }
@@ -387,7 +448,7 @@ class Server extends PersistentObject
      * @return object
      * @throws ServerIpsError
      */
-    public function ips($network = null) 
+    public function ips($network = null)
     {
         $url = Lang::noslash($this->Url('ips/'.$network));
 
@@ -396,7 +457,7 @@ class Server extends PersistentObject
         if ($response->HttpStatus() >= 300) {
             throw new Exceptions\ServerIpsError(sprintf(
                 Lang::translate('Error in Server::ips(), status [%d], response [%s]'),
-                $response->HttpStatus(), 
+                $response->HttpStatus(),
                 $response->HttpBody()
             ));
         }
@@ -428,10 +489,10 @@ class Server extends PersistentObject
      *      to `/dev/xvhdb`).
      * @param string $device the device to which to attach it
      */
-    public function AttachVolume(Volume $volume, $device = 'auto') 
+    public function AttachVolume(Volume $volume, $device = 'auto')
     {
         $this->CheckExtension('os-volumes');
-        
+
         return $this->VolumeAttachment()->Create(array(
             'volumeId'  => $volume->id,
             'device'    => ($device=='auto' ? NULL : $device)
@@ -448,7 +509,7 @@ class Server extends PersistentObject
      * @param OpenCloud\VolumeService\Volume $vol the volume to remove
      * @throws VolumeError
      */
-    public function DetachVolume(Volume $volume) 
+    public function DetachVolume(Volume $volume)
     {
         $this->CheckExtension('os-volumes');
         return $this->VolumeAttachment($volume->id)->Delete();
@@ -458,9 +519,12 @@ class Server extends PersistentObject
      * returns a VolumeAttachment object
      *
      */
-    public function VolumeAttachment($id = null) 
+    public function VolumeAttachment($id = null)
     {
-        return new VolumeAttachment($this, $id);
+        $resource = new VolumeAttachment($this->getService());
+        $resource->setParent($this);
+        $resource->populate($id);
+        return $resource;
     }
 
     /**
@@ -469,7 +533,7 @@ class Server extends PersistentObject
      * @api
      * @return Collection
      */
-    public function VolumeAttachmentList() 
+    public function VolumeAttachmentList()
     {
         return $this->Service()->Collection(
             '\OpenCloud\Compute\VolumeAttachment',
@@ -486,16 +550,30 @@ class Server extends PersistentObject
      * To upload a local file, use `file_get_contents('name')` for the `$data`
      * value.
      *
+     * @api
      * @param string $path the file path (up to 255 characters)
      * @param string $data the file contents (max size set by provider)
      * @return void
      * @throws PersonalityError if server already exists (has an ID)
      */
-    public function AddFile($path, $data) 
+    public function AddFile($path, $data)
     {
         // set the value
         $this->personality[$path] = base64_encode($data);
     }
+
+	/**
+	 * returns a console connection
+	 */
+    public function Console($type='novnc') {
+        $info = new \stdClass();
+        $info->type = $type;
+        $msg = new \stdClass();
+        $action = strpos('spice', $type) !== false ? 'os-getSPICEConsole' : 'os-getVNCConsole';
+        $msg->$action = $info;
+        return json_decode($this->Action($msg)->HttpBody())->console;
+    }
+
 
     /**
      * Creates the JSON for creating a new server
@@ -504,41 +582,67 @@ class Server extends PersistentObject
      *      create {rebuild ...} by changing this parameter
      * @return json
      */
-    protected function CreateJson($element = 'server') 
+    protected function CreateJson($params=NULL)
     {
         // create a blank object
         $obj = new \stdClass();
 
         // set a bunch of properties
-        $obj->$element = new \stdClass();
-        $obj->$element->name = $this->name;
-        $obj->$element->imageRef = $this->imageRef;
-        $obj->$element->flavorRef = $this->flavorRef;
-        $obj->$element->metadata = $this->metadata;
-
-        if (is_array($this->networks) && count($this->networks)) {
-            $obj->$element->networks = array();
-            foreach ($this->networks as $net) {
-                if (get_class($net) != 'OpenCloud\Compute\Network') {
-                    throw new Exceptions\InvalidParameterError(sprintf(
-                        Lang::translate('"networks" parameter must be an array of Compute\Network objects; [%s] found'),
-                        get_class($net)
-                    ));
+        $obj->server = new \stdClass();
+        
+        $allowedKeys = array(
+            'flavorRef',
+            'name',
+            'imageRef',
+            'OS-DCF:diskConfig',
+            'metadata',
+            'personality'
+        );
+        
+		if (is_array($params)) {
+			foreach ($params as $key => $ignore) {
+                // Only stock object with relevant keys (let's save some network bandwidth)
+                if (in_array($key, $allowedKeys)) {
+                    $obj->server->$key = $this->$key;
                 }
-                $netobj = new \stdClass();
-                $netobj->uuid = $net->id;
-                $obj->$element->networks[] = $netobj;
             }
         }
+        
+        $obj->server->imageRef = $this->imageRef;
+		$obj->server->name = $this->name;
+		$obj->server->flavorRef = $this->flavorRef;
+		$obj->server->metadata = $this->metadata;
+        
+		if (is_array($this->networks) && count($this->networks)) {
+			$obj->server->networks = array();
+			foreach ($this->networks as $net) {
+				if (get_class($net) != 'OpenCloud\Compute\Network') {
+					throw new Exceptions\InvalidParameterError(sprintf(
+						Lang::translate('"networks" parameter must be an '.
+						'array of Compute\Network objects; [%s] found'),
+						get_class($net)
+					));
+				}
+                if (!$net->id) {
+                    $this->getLogger()->warning(
+                        'When creating a server, make sure each network has a valid UUID'
+                    );
+                    continue;
+                }
+				$netobj = new \stdClass();
+				$netobj->uuid = $net->id;
+				$obj->server->networks[] = $netobj;
+			}
+		}
 
         // handle personality files
         if (count($this->personality)) {
-            $obj->$element->personality = array();
+            $obj->server->personality = array();
             foreach ($this->personality as $path => $data) {
                 $fileobj = new \stdClass();
                 $fileobj->path = $path;
                 $fileobj->contents = $data;
-                $obj->$element->personality[] = $fileobj;
+                $obj->server->personality[] = $fileobj;
             }
         }
 
@@ -550,7 +654,7 @@ class Server extends PersistentObject
      *
      * @return json
      */
-    protected function UpdateJson($params = array()) 
+    protected function UpdateJson($params = array())
     {
         $object = new \stdClass();
         $object->server = new \stdClass();
