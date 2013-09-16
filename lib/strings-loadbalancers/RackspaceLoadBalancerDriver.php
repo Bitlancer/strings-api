@@ -102,7 +102,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		return $protocols;
 	}
 			
-	public function create($name,$protocol,$port,$algorithm,$virtualIpType,$nodes,$wait=false,$waitTimeout=300){
+	public function create($name,$protocol,$algorithm,$virtualIpType,$nodes,$wait=false,$waitTimeout=300){
 
 		$loadBalancer = $this->connection->LoadBalancer();
 
@@ -118,8 +118,8 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		
 		$loadBalancer->Create(array(
 			'name' => $name,
-			'protocol' => $protocol,
-			'port' => $port,
+			'protocol' => $protocol['name'],
+			'port' => $protocol['port'],
             'algorithm' => $algorithm
 		));
 
@@ -151,6 +151,50 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 		$loadBalancer->Delete();
 	}
 
+    public function getAlgorithm($loadBalancerId){
+
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        return $loadBalancer->algorithm;
+    }
+
+    public function setAlgorithm($loadBalancerId,$algorithm,$wait=true,$waitTimeut=300){
+        
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        $loadBalancer->Update(array(
+            'algorithm' => $algorithm
+        ));
+
+        if($wait){
+            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+            if($loadBalancer->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+    }
+
+    public function getProtocol($loadBalancerId){
+
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        return array(
+            'name' => $loadBalancer->protocol,
+            'port' => $loadBalancer->port
+        );
+    }
+
+    public function setProtocol($loadBalancerId,$protocol,$wait=true,$waitTimeout=300){
+
+        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+        $loadBalancer->Update(array(
+            'protocol' => $protocol['name'],
+            'port' => $protocol['port']
+        ));
+
+        if($wait){
+            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
+            if($loadBalancer->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+    }
+
     public function getNodes($loadBalancerId){
 
 		$nodes = array();
@@ -172,9 +216,13 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
     public function addNode($loadBalancerId,$node,$wait=false,$waitTimeout=300){
 		
 		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+
+        print_r($loadBalancer->nodes);
+        die();
+
 	
 		$loadBalancer->AddNode($node['ip'],$node['port']);
-		$loadBalancer->AddNodes();
+		$resp = $loadBalancer->AddNodes();
 
         if($wait){
             $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
