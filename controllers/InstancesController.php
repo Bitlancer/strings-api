@@ -66,6 +66,7 @@ class InstancesController extends ResourcesController
 
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'active');
+                $this->Device->setCanSyncToLdapFlag($device,1);
             }
             else {
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);

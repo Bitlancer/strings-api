@@ -138,6 +138,23 @@ class Device extends ResourceModel
         return $this->query($query,$queryParameters);
     }
 
+    public function setCanSyncToLdapFlag($device,$canSync){
+
+        $query = "
+            UPDATE device
+            SET can_sync_to_ldap = :canSync
+            WHERE id = :id
+        ";
+
+        $queryParameters = array(
+            ':canSync' => $canSync,
+            ':id' => $device['device.id']
+        );
+
+        return $this->query($query,$queryParameters);
+    }
+ 
+
     public function delete($id){
 
         //Delete hiera variables first
