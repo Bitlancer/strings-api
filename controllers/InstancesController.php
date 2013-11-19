@@ -33,7 +33,7 @@ class InstancesController extends ResourcesController
         if(!isset($deviceAttrs['implementation.id'])){
 
             $providerDevice = $providerDriver->createServer(
-                $device['device.name'],
+                $deviceAttrs['dns.external.fqdn'],
                 $deviceAttrs['implementation.flavor_id'],
                 $deviceAttrs['implementation.image_id']);
 
