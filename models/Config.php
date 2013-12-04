@@ -28,4 +28,14 @@ class Config extends ResourceModel
 
         return $result['config.val'];
     }
+
+    public function getCloudFilesCredentials($organizationId){
+
+        return $this->getOption($organizationId,'deploy.cloud_files.credentials');
+    }
+
+    public function getGitPrivateKey($organizationId){
+
+        return $this->getOption($organizationId,'deploy.git.private_key');
+    }
 }
