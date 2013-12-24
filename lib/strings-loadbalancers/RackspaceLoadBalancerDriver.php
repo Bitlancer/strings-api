@@ -3,7 +3,9 @@
 namespace StringsLoadBalancer;
 
 require_once('LoadBalancerDriver.php');
-require(__DIR__ . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'php-opencloud' . DIRECTORY_SEPARATOR . 'Autoload.php');
+require_once('lib/SimpleRackspaceLib.php');
+
+use \SimpleRackspaceLib\SimpleRackspaceClient;
 
 class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 {
@@ -30,231 +32,165 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 	}
 	
 	protected function getProviderConnection(){
-	
-		$connection = new \OpenCloud\Rackspace($this->identityAPIEndpoint,$this->connectionCredentials);
-		return $connection->LoadBalancerService('cloudLoadBalancers',$this->region);
-	}
 
-	public function getLoadBalancers($filter=array()){
-
-		$loadBalancers = array();
-
-		$loadBalancerCollection = $this->connection->LoadBalancerList();
-		while($loadBalancer = $loadBalancerCollection->Next()){
-
-            $virtualIps = array();
-            foreach($loadBalancer->virtualIps as $ip){
-                $virtualIps[] = array(
-                    'id' => $ip->id,
-                    'type' => $ip->type,
-                    'address' => $ip->address,
-                    'version' => $ip->ipVersion
-                );
-            }
-
-            $nodes = array();
-            foreach($loadBalancer->nodes as $node){
-                $nodes[] = array(
-                    'id' => $node->id,
-                    'ip' => $node->address,
-                    'port' => $node->port
-                );
-            }
-
-			$loadBalancers[] = array(
-                'id' => $loadBalancer->id,
-                'name' => $loadBalancer->name,
-                'port' => $loadBalancer->port,
-                'protocol' => $loadBalancer->protocol,
-                'algorithm' => $loadBalancer->algorithm,
-                'virtualIps' => $virtualIps,
-                'nodes' => $nodes
-            );
-		}
-
-		return $loadBalancers;
-	}
-
-	public function getAlgorithms(){
-
-		$algorithms = array();
-
-		$algoCollection = $this->connection->AlgorithmList();
-		while($algorithm = $algoCollection->Next()){
-			$algorithms[] = $algorithm->name;
-		}
-
-		return $algorithms;	
-	}
-
-	public function getProtocols(){
-
-		$protocols = array();
-
-		$protocolsCollection = $this->connection->ProtocolList();
-		while($protocol = $protocolsCollection->Next()){
-			$protocols[] = array(
-                'name' => $protocol->name,
-                'port' => $protocol->port
-            );
-		}
-
-		return $protocols;
-	}
-			
-	public function create($name,$protocol,$algorithm,$virtualIpType,$nodes,$wait=false,$waitTimeout=300){
-
-		$loadBalancer = $this->connection->LoadBalancer();
-
-        $virtualIpType = strtoupper($virtualIpType);
-        if($virtualIpType == 'PRIVATE'){
-            $virtualIpType = 'SERVICENET'; 
-        }
-		$loadBalancer->AddVirtualIp($virtualIpType);
-
-        foreach($nodes as $node){
-            $loadBalancer->AddNode($node['ip'],$node['port']);
-        }
-		
-		$loadBalancer->Create(array(
-			'name' => $name,
-			'protocol' => $protocol['name'],
-			'port' => $protocol['port'],
-            'algorithm' => $algorithm
-		));
-
-        if($wait){
-            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
-            if($loadBalancer->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
-        }
-
-        $nodes = array();
-        foreach($loadBalancer->nodes as $node){
-            $nodes[] = array(
-                'id' => $node->id,
-                'ip' => $node->address,
-                'port' => $node->port
-            );
-        }
-
-		return array(
-			'id' => $loadBalancer->id,
-			'name' => $loadBalancer->name,
-            'nodes' => $nodes 
-		);
-	}
-
-    public function delete($loadBalancerId){
-
-		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-		$loadBalancer->Delete();
-	}
-
-    public function getAlgorithm($loadBalancerId){
-
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        return $loadBalancer->algorithm;
-    }
-
-    public function setAlgorithm($loadBalancerId,$algorithm,$wait=true,$waitTimeut=300){
-        
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        $loadBalancer->Update(array(
-            'algorithm' => $algorithm
-        ));
-
-        if($wait){
-            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
-            if($loadBalancer->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
-        }
-    }
-
-    public function getProtocol($loadBalancerId){
-
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        return array(
-            'name' => $loadBalancer->protocol,
-            'port' => $loadBalancer->port
+        $connection = new SimpleRackspaceClient(
+            $this->connectionCredentials['username'],
+            $this->connectionCredentials['apiKey'],
+            $this->identityAPIEndpoint,
+            'cloudLoadBalancers',
+            $this->region
         );
-    }
-
-    public function setProtocol($loadBalancerId,$protocol,$wait=true,$waitTimeout=300){
-
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        $loadBalancer->Update(array(
-            'protocol' => $protocol['name'],
-            'port' => $protocol['port']
-        ));
-
-        if($wait){
-            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
-            if($loadBalancer->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
-        }
-    }
-
-    public function getNodes($loadBalancerId){
-
-		$nodes = array();
-
-		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        $nodeCollection = $loadBalancer->NodeList();
-		while($node = $nodeCollection->Next()){
-			$nodes[] = array(
-				'id' => $node->id,
-				'ip' => $node->address,
-				'port' => $node->port,
-				'condition' => $node->condition
-			); 
-		}
-
-		return $nodes;
+	
+		return $connection;
 	}
 
-    public function addNode($loadBalancerId,$node,$wait=false,$waitTimeout=300){
-		
-		$loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
+    public function get($loadBalancerId) {
+        
+        $url = "/loadbalancers/$loadBalancerId";
+        list($resp, $status) = $this->connection->request($url);
+        if($status != 200)
+            throw $this->statusToException($status, $resp);
 
-        print_r($loadBalancer->nodes);
-        die();
+        return $resp['loadBalancer'];
+    }
 
-	
-		$loadBalancer->AddNode($node['ip'],$node['port']);
-		$resp = $loadBalancer->AddNodes();
+    public function create($attrs) {
 
-        if($wait){
-            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
-            if($loadBalancer->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
-        }
+        $requiredAttrs = array(
+            'name',
+            'protocol',
+            'port',
+            'virtualIps'
+        );
 
-        $nodes = $this->getNodes($loadBalancerId);
-        foreach($nodes as $n){
-            if($n['ip'] == $node['ip']){
-                return $n;
+        foreach($requiredAttrs as $attrName){
+            if(!isset($attrs[$attrName])){
+                throw new \InvalidArgumentException("$attrName is required."); 
             }
         }
-	}
 
-    public function removeNode($loadBalancerId,$nodeId,$wait=false,$waitTimeout=300){
+        $data = array(
+            'loadBalancer' => $attrs
+        );
 
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        $node = $loadBalancer->Node($nodeId);
-        $node->Delete();
+        list($resp, $status) = $this->connection->request('/loadbalancers',
+                                                            'POST',
+                                                            $data);
 
-        if($wait){
-            $loadBalancer->WaitFor('ACTIVE',$waitTimeout);
-            if($loadBalancer->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
+        if($status != 202)
+            throw $this->statusToException($status, $resp);
+
+        return $resp['loadBalancer'];
+    }
+
+    public function update($loadBalancerId, $attrs) {
+
+        $updatableFields = array(
+            'name',
+            'protocol',
+            'halfClosed',
+            'algorithm',
+            'port',
+            'timeout',
+            'httpsRedirect'
+        );
+
+        if(empty($attrs))
+            throw new \InvalidArgumentException("At least one attribute must be supplied.");
+
+        foreach($attrs as $attrName => $attrVal){
+            if(!in_array($attrName, $updatableFields)){
+                throw new \InvalidArgumentException("$attrName is not updatable via this method.");
+            }
         }
-	}
 
-    public function getStatus($loadBalancerId){
+        $data = array(
+            'loadBalancer' => $attrs
+        );
 
-        $loadBalancer = $this->connection->LoadBalancer($loadBalancerId);
-        return $this->toGenericStatus($loadBalancer->status);
+        $url = "/loadbalancers/$loadBalancerId";
+
+        list($resp, $status) = $this->connection->request($url, 'PUT', $data);
+
+        if($status != 202)
+            throw $this->statusToException($status, $resp);
+
+        return $resp['loadBalancer'];
+    }
+
+    public function delete($loadBalancerId) {
+
+
+        $url = "/loadbalancers/$loadBalancerId"; 
+        list($resp, $status) = $this->connection->request($url, 'DELETE');
+
+        if($status != 202)
+            throw $this->statusToException($status, $resp);
+    }
+
+    public function getNodes($loadBalancerId) {
+        
+        $url = "/loadbalancers/$loadBalancerId/nodes";
+        list($resp, $status) = $this->connection->request($url);
+        if($status != 200 && $status != 202)
+            throw $this->statusToException($status, $resp);
+
+        return $resp['nodes'];
+    }
+
+    public function addNodes($loadBalancerId, $nodes) {
+
+        $url = "/loadbalancers/$loadBalancerId/nodes";
+
+        $data = array('nodes' => $nodes);
+
+        list($resp, $status) = $this->connection->request($url, 'POST', $data);
+
+        if($status != 200 && $status != 202)
+            throw $this->statusToException($status, $resp);
+
+        return $resp['nodes'];
+    }
+
+    public function removeNodes($loadBalancerId, $nodes) {
+        
+        $url = "/loadbalancers/$loadBalancerId/nodes?";
+
+        $idParamValues = array();
+        foreach($nodes as $nodeId)
+            $idParamValues .= "id=$nodeId";
+        $url .= implode("&", $idParamValues);
+
+        list($resp, $status) = $this->connection->request($url, 'DELETE');
+        
+        if($status != 200 && $status != 202)
+            throw $this->statusToException($status, $resp);
+
+        return $resp['nodes'];
+    }
+
+    public function statusToException($status, $resp){
+
+        $resp = json_encode($resp);
+
+        switch($status){
+            case 400:
+                return new \InvalidArgumentException($resp);
+            case 401:
+                return new \RuntimeException('Provider authentication failure');
+            case 403:
+                return new \RuntimeException('Authorization failure');
+            case 404:
+                return new \RuntimeException('Resource not found');
+            case 413:
+                return new \RuntimeException('Limit threshold exceeded');
+            case 500:
+                return new \RuntimeException("Unexpected error, $resp");
+            case 503:
+                return new \RuntimeException("Provider service temporarily unavailable. $resp");
+            default:
+                return new \Exception("Unexpected status code $status");
+        }
     }
 
     protected function toGenericStatus($status){

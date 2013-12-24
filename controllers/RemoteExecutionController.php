@@ -284,6 +284,10 @@ class RemoteExecutionController extends ResourcesController
         );
     }
 
+    /**
+     * Build --devices parameter string that will be passed
+     * to the script on execution
+     */
     private function devicesParameterString($devices){
 
         $devicesParams = array();

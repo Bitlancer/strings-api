@@ -126,47 +126,23 @@ class LoadBalancersController extends ResourcesController
         $this->Device->delete($deviceId);
     }
 
-    public function getAlgorithms($implementationId,$region){
-        
-         if(empty($implementationId))
-            throw new InvalidArgumentException('Implementation id is required');
+    /**
+     * Update a load-balancers basic attributes
+     */
+    public function update($deviceId){
+        throw new \Exception('Not implemented');
+    }
 
-        if(empty($region))
-            throw new InvalidArgumentException('Region is required');
-
-        if(!$this->Implementation->exists($implementationId))
-            throw NotFoundException('Implementation does not exist');
-
-        $providerDriver = $this->getProviderDriver($implementationId,$region);
-
-        $algos = $providerDriver->getAlgorithms();
-
-        $this->set(array(
-           'algorithms' => $algos
-        ));
-	}
-
-    public function getProtocols($implementationId,$region){
-
-        if(empty($implementationId))
-            throw new InvalidArgumentException('Implementation id is required');
-
-        if(empty($region))
-            throw new InvalidArgumentException('Region is required');
-
-        if(!$this->Implementation->exists($implementationId))
-            throw NotFoundException('Implementation does not exist');
-
-        $providerDriver = $this->getProviderDriver($implementationId,$region);
-
-        $protocols = $providerDriver->getProtocols();
-
-        $this->set(array(
-           'protocols' => $protocols
-        ));
-	}
+    /**
+     * Update a load-balancers session persistence setting
+     */
+    public function updateSessionPersistence($deviceId){
+        throw new \Exception('Not implemented');
+    }
 
     public function updateNodes($deviceId){
+
+        throw new \Exception('Not implemented');
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -184,60 +160,6 @@ class LoadBalancersController extends ResourcesController
         $nodes = $providerDriver->getNodes($providerDeviceId);
         
         $this->Device->saveAttribute($device,'implementation.nodes',json_encode($nodes));
-	}
-
-    public function addNode($deviceId,$nodeIp,$nodePort){
-
-        if(empty($deviceId))
-            throw new InvalidArgumentException('Device id is required');
-
-        if(empty($nodeIp))
-            throw new InvalidArgumentException('Node ip is required');
-
-        if(empty($nodePort))
-            throw new InvalidArgumentException('Node port is required');
-
-        if(!$this->Device->exists($deviceId))
-            throw new NotFoundException('Device does not exist');
-
-        $device = $this->Device->get($deviceId);
-        $deviceAttrs = $device['device_attribute'];
-
-        $providerDeviceId = $deviceAttrs['implementation.id'];
-
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
-
-        $node = array(
-            'ip' => $nodeIp,
-            'port' => $nodePort
-        );
-
-        $providerDriver->addNode($providerDeviceId,$node,true);
-
-        $this->updateNodes($deviceId);
-	}
-
-    public function removeNode($deviceId,$nodeId){
-
-       if(empty($deviceId))
-            throw new InvalidArgumentException('Device id is required');
-
-        if(empty($nodeId))
-            throw new InvalidArgumentException('Node id is required');
-
-        if(!$this->Device->exists($deviceId))
-            throw new NotFoundException('Device does not exist');
-
-        $device = $this->Device->get($deviceId);
-        $deviceAttrs = $device['device_attribute'];
-
-        $providerDeviceId = $deviceAttrs['implementation.id'];
-
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
-
-        $providerDriver->removeNode($providerDeviceId,$nodeId,true);
-
-        $this->updateNodes($deviceId);
 	}
 
     protected function getProviderDriver($implementationId,$region){

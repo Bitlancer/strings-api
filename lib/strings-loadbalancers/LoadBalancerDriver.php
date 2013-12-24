@@ -13,25 +13,14 @@ abstract class LoadBalancerDriver
 	abstract protected function parseConnectionParameters($params);
 	abstract protected function getProviderConnection();
 
-	abstract public function getAlgorithms();
-	abstract public function getProtocols();
-
-	abstract public function getLoadBalancers($filter=array());
-
-    abstract public function create($name,$protocol,$algorithm,$virtualIpType,$nodes,$wait=false,$waitTimeout=300);
+    abstract public function get($loadBalancerId);
+    abstract public function create($attrs);
+    abstract public function update($loadBalancerId, $attrs);
 	abstract public function delete($loadBalancerId);
 
-    abstract public function getAlgorithm($loadBalancerId);
-    abstract public function setAlgorithm($loadBalancerId,$algorithm);
-
-    abstract public function getProtocol($loadBalancerId);
-    abstract public function setProtocol($loadBalancerId,$protocol);
-
 	abstract public function getNodes($loadBalancerId);
-	abstract public function addNode($loadBalancerId,$node);
-	abstract public function removeNode($loadBalancerId,$node);
-
-    abstract public function getStatus($loadBalancerId);
+	abstract public function addNodes($loadBalancerId, $nodes);
+	abstract public function removeNodes($loadBalancerId, $nodes);
 
 	public static function validDataStructure($validDataStruc,$compDataStruc){
 
