@@ -35,6 +35,54 @@ class RackspaceDnsDriver extends DnsDriver
 		return $connection->DNS('cloudDNS',$this->region);
 	}
 
+    /**
+     * $dnsRecord An array with the following keys: type, name, ttl, data, priority
+     */
+    public function addDomainRecord($domainId,$dnsRecord,$wait=false,$waitTimeout=300){
+
+        $domain = $this->connection->Domain($domainId);
+        $record = $domain->Record();
+        $job = $record->Create($dnsRecord);
+
+        if($wait)
+            $job->WaitFor('COMPLETED',$waitTimeout);
+
+        $record = $this->getDomainRecordByTypeAndName($domainId,
+                                                        $dnsRecord['type'],
+                                                        $dnsRecord['name']);
+
+        return $record;
+    }
+
+    public function getDomainRecordByTypeAndName($domainId,$type,$name){
+        return array_pop($this->getDomainRecords($domainId,array('type' => $type,'name' => $name)));
+    }
+
+    public function getDomainRecords($domainId,$filter=array()){
+
+        $domain = $this->connection->Domain($domainId);
+
+        $records = array();
+        $recordCollection = $domain->RecordList($filter);
+        while($record = $recordCollection->Next()){
+            $records[] = $record;
+        }
+
+        return $records;
+    }
+
+    public function removeDomainRecord($domainId,$recordId,$wait=false,$waitTimeout=300){
+
+        $domain = $this->connection->Domain($domainId);
+        $record = $domain->Record($recordId);
+
+        $job = $record->Delete();
+
+        if($wait)
+            $job->WaitFor('COMPLETED',$waitTimeout);
+    }
+
+    /*
 	public function getDomain($domainId){
 
         $domain = $this->connection->Domain($domainId);
@@ -117,41 +165,6 @@ class RackspaceDnsDriver extends DnsDriver
 		return RackspaceDnsRecord::fromProviderObject($record);
 	}
 
-    public function addDomainRecord($domainId,DnsRecord $dnsRecord,$wait=false,$waitTimeout=300){
-
-		$domain = $this->connection->Domain($domainId);
-		$record = $domain->Record();
-
-		$recordData = array(
-			'type' => $dnsRecord->getType(),
-			'name' => $dnsRecord->getName(),
-			'ttl' => $dnsRecord->getTtl(),
-			'data' => $dnsRecord->getData()
-		);
-
-		if($dnsRecord->getPriority() !== false)
-			$recordData['priority'] = $dnsRecord->getPriority();
-
-		$job = $record->Create($recordData);
-
-		if($wait)
-			$job->WaitFor('COMPLETED',$waitTimeout);
-
-		return $this->getDomainRecordByTypeAndName($domainId,$dnsRecord->getType(),$dnsRecord->getName());
-	}
-
-    public function removeDomainRecord($domainId,$recordId,$wait=false,$waitTimeout=300){
-
-        $domain = $this->connection->Domain($domainId);
-        $record = $domain->Record($recordId);
-
-        $job = $record->Delete();
-
-        if($wait)
-            $job->WaitFor('COMPLETED',$waitTimeout);
-    }
-
-	/*
     public function addPtrRecord(DnsRecord $dnsRecord,$wait=false,$waitTimeout=300){
 
 		$ptrRecord = $this->connection->PtrRecord();

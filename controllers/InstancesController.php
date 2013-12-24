@@ -32,41 +32,68 @@ class InstancesController extends ResourcesController
         //Check the device's status to determine what we should do
         if(!isset($deviceAttrs['implementation.id'])){
 
-            $providerDevice = $providerDriver->createServer(
-                $deviceAttrs['dns.external.fqdn'],
-                $deviceAttrs['implementation.flavor_id'],
-                $deviceAttrs['implementation.image_id']);
+            $providerDevice = array();
+            try {
+                $providerDevice = $providerDriver->createServer(
+                    $deviceAttrs['dns.external.fqdn'],
+                    $deviceAttrs['implementation.flavor_id'],
+                    $deviceAttrs['implementation.image_id']);
+            }
+            catch(\Exception $e){
+                $this->Device->updateImplementationStatus($device, 'error');
+                throw $e;
+            }
 
             $providerDeviceId = $providerDevice['id'];
-
             $this->Device->saveAttribute($device,'implementation.id',$providerDeviceId);
 
-            $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            $newDeviceStatus = "build";
+            try {
+                $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+            }
+            catch(\Exception $e){
+                //For now, let's consider this to be a temporary failure.
+                //We should be checking for different exceptions
+            }
 
+            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
             $this->temporaryFailure("Waiting for device build to complete");
         }
         else {
 
             $providerDeviceId = $deviceAttrs['implementation.id'];
 
-            $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+            $liveDeviceStatus = "build";
+            try {
+                $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
+            }
+            catch(\Exception $e){
+                //For now let's consider this to be a temporary failure.
+                //We should be checking for different exceptions
+            }
 
             if($liveDeviceStatus == 'build'){
                 $this->temporaryFailure("Waiting for device to spin up");
             }
             elseif($liveDeviceStatus == 'active'){
 
-                $ips = $providerDriver->getServerIPs($providerDeviceId);
-                $this->Device->saveIPs($device,$ips);
+                try {
 
-                $this->addDeviceARecord($device['device.id']);
+                    $ips = $providerDriver->getServerIPs($providerDeviceId);
+                    $this->Device->saveIPs($device,$ips);
 
-                $this->maybeScheduleImageBackups($device['device.id']);
+                    $this->addDeviceARecord($device['device.id']);
 
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
-                $this->Device->updateStringsStatus($device,'active');
-                $this->Device->setCanSyncToLdapFlag($device,1);
+                    $this->maybeScheduleImageBackups($device['device.id']);
+
+                    $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                    $this->Device->updateStringsStatus($device,'active');
+                    $this->Device->setCanSyncToLdapFlag($device,1);
+                }
+                catch(\Exception $e){
+                    $this->Device->updateImplementationStatus($device,'error');
+                    throw $e;
+                }
             }
             else {
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);

@@ -47,10 +47,15 @@ class DnsController extends ResourcesController
         if($ttl === false)
             throw new ClientException('External DNS record ttl has not been configured');
 
-        $record = new \StringsDns\DnsRecord(null,'A',$deviceFQDN,$ipAddress,$ttl,false);
+        $record = array(
+            'type' => 'A',
+            'name' => $deviceFQDN,
+            'data' => $ipAddress,
+            'ttl' => $ttl
+        );
         $record = $providerDriver->addDomainRecord($domainId,$record,true);
 
-        $this->Device->saveAttribute($device,'dns.external.arecord_id',$record->id);
+        $this->Device->saveAttribute($device,'dns.external.arecord_id',$record['id']);
     }
 
     public function removeDeviceARecord($deviceId=null){

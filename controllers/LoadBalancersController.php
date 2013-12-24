@@ -28,22 +28,52 @@ class LoadBalancersController extends ResourcesController
 
         if(!isset($deviceAttrs['implementation.id'])){
 
-            $nodes = json_decode($deviceAttrs['implementation.nodes'],true);
+            /*
+            * When a LB has a shared VIP, it must wait for its peer to be created
+            * so it can grab the VIP id from it. So until the peer has hit the
+            * active state, throw a 503. 
+            */
+            if($deviceAttrs['implementation.virtualIpType'] == 'shared'){
 
-            $providerDevice = $providerDriver->create(
-                $device['device.name'],
-                $deviceAttrs['implementation.protocol'],
-                $deviceAttrs['implementation.port'],
-                $deviceAttrs['implementation.algorithm'],
-                $deviceAttrs['implementation.virtualIpType'],
-                $nodes
+                $peerLBName = $deviceAttrs['implementation.virtualIpPeer'];
+                $peerLB = $this->Device->getByName($organizationId,$peerLBName);
+                if(empty($peerLB))
+                    throw new Exception('Could not find peer load-balancer.');
+                if($peerLB['device.state'] == 'error')
+                    throw new Exception('Peer LB creation failed.');
+                elseif($peerLB['device.state'] == 'active'){
+                    $peerLBAttrs = $peerLB['device_attribute'];
+                    $virtualIpId = $peerLBAttrs['implementation.virtualIpId'];
+                    $this->Device->saveAttribute($device,'implementation.virtualIpId',$virtualIpId);
+                    $deviceAttrs['implementation.virtualIpId'] = $virtualIpId;
+                }
+                else {
+                    return $this->temporaryFailure("Waiting for peer LB build to complete."); 
+                }
+            }
+
+            $nodes = array();
+            if(isset($deviceAttrs['implementation.nodes']))
+                $nodes = json_decode($deviceAttrs['implementation.nodes'],true);
+
+            $lb = array(
+                'name' => $device['device.name'],
+                'protocol' => $deviceAttrs['implementation.protocol'],
+                'port' => $deviceAttrs['implementation.port'],
+                'algorithm' => $deviceAttrs['implementation.algorithm'],
+                'virtualIpType' => $deviceAttrs['implementation.virtualIpType'],
+                'nodes' => $nodes
             );
+
+            if($deviceAttrs['implementation.virtualIpType'] == 'shared'){
+                unset($lb['virtualIpType']);
+                $lb['virtaulIpId'] = $deviceAttrs['implementation.virtualIpId'];
+            }
+
+            $providerDevice = $providerDriver->create($lb);
 
             $providerDeviceId = $providerDevice['id'];
             $this->Device->saveAttribute($device,'implementation.id',$providerDeviceId);
-
-            $nodes = $providerDevice['nodes'];
-            $this->Device->saveAttribute($device,'implementation.nodes',json_encode($nodes));
 
             $newDeviceStatus = $providerDriver->getStatus($providerDeviceId);
             $this->Device->updateImplementationStatus($device,$newDeviceStatus);
@@ -60,6 +90,13 @@ class LoadBalancersController extends ResourcesController
                 $this->temporaryFailure("Waiting for device to spin up");
             }
             elseif($liveDeviceStatus == 'active'){
+
+                throw new Exception('Not implemented');
+
+                //Need to set virtaulIpId and nodes
+
+                $nodes = $providerDevice['nodes'];
+                $this->Device->saveAttribute($device,'implementation.nodes',json_encode($nodes));
 
                 $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
             }
