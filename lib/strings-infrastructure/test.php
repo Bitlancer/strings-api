@@ -21,12 +21,11 @@ $image = 'da1f0392-8c64-468f-a839-a9e56caebf07';    //Centos
 $flavor = '2';  //512 MB
 
 //Create a server - wait for completion
-/*
 echo "Creating server...\t";
 $server = $rackspace->createServer('Test2',$flavor,$image,true,600);
 echo "done\n";
-*/
 
+/*
 $server = array(
 	'id' => '5599d276-d233-474a-99e0-a9a74cc9b25c'
 );
@@ -36,6 +35,7 @@ echo "Server Id = $serverId\n";
 
 //Get server status
 $rackspace->getServerIPs($serverId);
+*/
 
 //Resize server
 /*
