@@ -55,7 +55,9 @@ class RackspaceDnsDriver extends DnsDriver
     }
 
     public function getDomainRecordByTypeAndName($domainId,$type,$name){
-        return array_pop($this->getDomainRecords($domainId,array('type' => $type,'name' => $name)));
+        return array_pop(
+            $this->getDomainRecords($domainId,array('type' => $type,'name' => $name))
+        );
     }
 
     public function getDomainRecords($domainId,$filter=array()){
@@ -65,7 +67,14 @@ class RackspaceDnsDriver extends DnsDriver
         $records = array();
         $recordCollection = $domain->RecordList($filter);
         while($record = $recordCollection->Next()){
-            $records[] = $record;
+            $records[] = array(
+                'id' => $record->id,
+                'name' => $record->name,
+                'data' => $record->data,
+                'type' => $record->type,
+                'ttl' => $record->ttl,
+                'priority' => $record->priority
+            );
         }
 
         return $records;

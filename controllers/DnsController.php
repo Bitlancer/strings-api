@@ -31,8 +31,6 @@ class DnsController extends ResourcesController
         if($dnsRegion === false)
             throw new ClientException('External DNS region has not been configured');
 
-        $providerDriver = $this->getProviderDriver($organizationId,$dnsRegion);
-
         $domainId = $this->Config->getOption($organizationId,'dns.external.domain_id');
         if($domainId === false)
             throw new ClientException('External DNS domain id has not been configured');
@@ -53,6 +51,8 @@ class DnsController extends ResourcesController
             'data' => $ipAddress,
             'ttl' => $ttl
         );
+
+        $providerDriver = $this->getProviderDriver($organizationId,$dnsRegion);
         $record = $providerDriver->addDomainRecord($domainId,$record,true);
 
         $this->Device->saveAttribute($device,'dns.external.arecord_id',$record['id']);
