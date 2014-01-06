@@ -127,7 +127,7 @@ class InstancesController extends ResourcesController
 
                 $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
                 $this->Device->updateImplementationStatus($device,$newDeviceStatus);
-                $this->Device->updateStringsStatus($device,$newDeviceStatus);
+                $this->Device->updateStringsStatus($device,'resize');
 
                 $this->setHeaderValue('x-bitlancer-url',REQUEST_URL . "?state=waitingForResize");
                 
