@@ -1,6 +1,5 @@
 <?php
 
-
 namespace Application;
 
 class RemoteExecutionController extends ResourcesController
@@ -24,6 +23,9 @@ class RemoteExecutionController extends ResourcesController
             throw new NotFoundException('Script does not exist.');
 
         $orgId = $script['script.organization_id'];
+
+        //Need a uniq run id so we'll use the job id
+        $execId = $this->getHeaderValue('x-bitlancer-job-id');
 
         //Get the related model, ex: Application
         $relatedModelName = $this->getRelatedModelName($script);
@@ -55,14 +57,17 @@ class RemoteExecutionController extends ResourcesController
         $output = array();
         try {
 
-            list($lastExitCode, $opOutput, $tmpDir) = $this->createTempRemoteDir($execSshCmd, $script, $relatedModelName);
+            list($lastExitCode, $opOutput, $tmpDir) = $this->createTempRemoteDir($execSshCmd, $relatedModelName, $execId);
             $output += $opOutput;
             if($lastExitCode == 0){
                 list($lastExitCode, $opOutput) = $this->pullDownCode($execSshCmd,$tmpDir,$script);
                 $output += $opOutput;
                 if($lastExitCode == 0){
-                    list($lastExitCode, $opOutput) = $this->runScript($execSshCmd, $tmpDir,
-                                                                    $script, $relatedModelName,
+                    list($lastExitCode, $opOutput) = $this->runScript($execSshCmd,
+                                                                    $tmpDir,
+                                                                    $script,
+                                                                    $execId,
+                                                                    $relatedModelName,
                                                                     $devices);
                     $output += $opOutput;
                 }
@@ -119,11 +124,9 @@ class RemoteExecutionController extends ResourcesController
         };
     }
 
-    private function createTempRemoteDir($execSshCmd, $script, $relatedModelName){
+    private function createTempRemoteDir($execSshCmd, $relatedModelName, $execId){
 
-        $relatedModelType = strtolower($script['script.model']);
-
-        $remoteDirName = implode(".",array($relatedModelType,$relatedModelName,rand(1000000, 9999999)));
+        $remoteDirName = "$relatedModelName.$execId";
 
         $cmd = "mkdir ~/$remoteDirName";
         list($status,$output) = $execSshCmd($cmd);
@@ -157,15 +160,15 @@ class RemoteExecutionController extends ResourcesController
         return $execSshCmd($cmd);
     }
 
-    private function runScript($execSshCmd, $tmpDir, $script, $relatedModelName, $devices){
+    private function runScript($execSshCmd, $tmpDir, $script, $execId, $relatedModelName, $devices){
         
-        $paramList = $this->generateParameterList($script, $relatedModelName, $devices);
+        $paramList = $this->generateParameterList($script, $execId, $relatedModelName, $devices);
         $paramStr = implode(' ', $paramList);
 
-        $relScriptPath = "./script/{$script['script.path']}";
+        $relScriptPath = "./{$script['script.path']}";
 
         $cmd = implode(";", array(
-            "cd ~/$tmpDir",
+            "cd ~/$tmpDir/script/",
             "chmod +x $relScriptPath",
             "$relScriptPath $paramStr"
         ));
@@ -179,21 +182,25 @@ class RemoteExecutionController extends ResourcesController
         return $execSshCmd($cmd);
     }
 
-    private function generateParameterList($script, $relatedModelName, $devices){
+    private function generateParameterList($script, $execId, $relatedModelName, $devices){
 
-        $modelParam = "--model " . $script['script.model'];
-        $modelNameParam = "--model-name \"$relatedModelName\"";
+        $execIdParam = "--exec-id " . $execId;
+        $typeParam = "--type " . $script['script.model'];
+        $nameParam = "--name \"$relatedModelName\"";
         $devicesParam = "--server-list \"" . $this->devicesParameterString($devices) . "\"";
+
         $cloudFilesCreds = $this->Config->getCloudFilesCredentials($script['script.organization_id']);
         $cloudFilesCredsParam = "--cloud-files-credentials \"$cloudFilesCreds\"";
-        $userSuppliedParam = $script['script.parameters'];
+
+        $userSuppliedParams = $script['script.parameters'];
         
         return array(
-            $modelParam,
-            $modelNameParam,
+            $execIdParam,
+            $typeParam,
+            $nameParam,
             $devicesParam,
             $cloudFilesCredsParam,
-            $userSuppliedParam
+            $userSuppliedParams
         );
     }
 
@@ -269,13 +276,13 @@ class RemoteExecutionController extends ResourcesController
 
         $jumpServerDeviceId = $jumpServer['jump_server.device_id'];
 
-        //Get jump server internal FQDN
+        //Get jump server external FQDN
         $jumpServerFQDN = $this->Device->getAttribute(
             $jumpServerDeviceId,
-            'dns.internal.fqdn');
+            'dns.external.fqdn');
             
         if(empty($jumpServerFQDN))
-            throw new ServerException("Attribute dns.internal.fqdn has not " .
+            throw new ServerException("Attribute dns.external.fqdn has not " .
                                       "been defined for device $jumpServerDeviceId");
 
         return array(
