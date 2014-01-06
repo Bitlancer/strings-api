@@ -123,6 +123,12 @@ class Controller {
 		throw new ServerException("Failed to load library $library");
 	}
 
+    public function getHeaderValue($key) {
+
+        $request = $this->app->request();
+        return $request->headers($key);
+    }
+
     public function setHeaderValue($header,$value){
 
         $response = $this->app->response();
