@@ -114,14 +114,6 @@ class Device extends ResourceModel
                                     $val);
     }
 
-    public function updateImplementationStatus($device,$status){
-
-        $this->saveAttribute($device,'implementation.status',$status);
-        $this->saveAttribute($device,
-                            'implementation.status.last_updated',
-                            date('Y-m-d H:i:s'));
-    }
-
     public function updateStringsStatus($device,$status){
 
         $query = "

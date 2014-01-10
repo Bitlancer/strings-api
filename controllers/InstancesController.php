@@ -24,12 +24,15 @@ class InstancesController extends ResourcesController
         $device = $this->Device->get($deviceId); 
         $deviceAttrs = $device['device_attribute'];
 
-        if(isset($deviceAttrs['implementation.status']) && $deviceAttrs['implementation.status'] == 'active')
+        if($device['device.status'] == 'active')
             throw new ClientException('This device is already running');
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
-        //Check the device's status to determine what we should do
+        //If implementation.id isn't set, we haven't called create()
         if(!isset($deviceAttrs['implementation.id'])){
 
             $providerDevice = array();
@@ -40,40 +43,32 @@ class InstancesController extends ResourcesController
                     $deviceAttrs['implementation.image_id']);
             }
             catch(\Exception $e){
-                $this->Device->updateImplementationStatus($device, 'error');
+                $this->Device->updateStringsStatus($device, 'error');
                 throw $e;
             }
 
             $providerDeviceId = $providerDevice['id'];
-            $this->Device->saveAttribute($device,'implementation.id',$providerDeviceId);
+            $this->Device->saveAttribute($device,'implementation.id',
+                                        $providerDeviceId);
 
-            $newDeviceStatus = "build";
-            try {
-                $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            }
-            catch(\Exception $e){
-                //For now, let's consider this to be a temporary failure.
-                //We should be checking for different exceptions
-            }
-
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
-            $this->temporaryFailure("Waiting for device build to complete");
+            $this->Device->updateStringsStatus($device, 'building');
+            return $this->temporaryFailure("Waiting for device build to complete");
         }
         else {
 
             $providerDeviceId = $deviceAttrs['implementation.id'];
-
-            $liveDeviceStatus = "build";
+            $liveDeviceStatus = "building";
             try {
                 $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
             }
             catch(\Exception $e){
                 //For now let's consider this to be a temporary failure.
                 //We should be checking for different exceptions
+                return $this->temporaryFailure("Waiting for device build to complete");
             }
 
-            if($liveDeviceStatus == 'build'){
-                $this->temporaryFailure("Waiting for device to spin up");
+            if($liveDeviceStatus == 'building'){
+                $this->temporaryFailure("Waiting for device build to complete");
             }
             elseif($liveDeviceStatus == 'active'){
 
@@ -86,24 +81,22 @@ class InstancesController extends ResourcesController
 
                     $this->maybeScheduleImageBackups($device['device.id']);
 
-                    $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                     $this->Device->updateStringsStatus($device,'active');
                     $this->Device->setCanSyncToLdapFlag($device,1);
                 }
                 catch(\Exception $e){
-                    $this->Device->updateImplementationStatus($device,'error');
+                    $this->Device->updateStringsStatus($device,'error');
                     throw $e;
                 }
             }
             else {
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'error');
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
 	}
 
-	public function resize($deviceId,$flavorId){
+	public function resize($deviceId, $flavorId){
 
        if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -115,7 +108,8 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],
+                                                $deviceAttrs['implementation.region_id']);
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
@@ -123,18 +117,16 @@ class InstancesController extends ResourcesController
         if(!isset($getParams['state'])){
 
             if($liveDeviceStatus == 'active'){
-                $providerDriver->resizeServer($providerDeviceId,$flavorId);
+                $providerDriver->resizeServer($providerDeviceId, $flavorId);
 
                 $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-                $this->Device->updateImplementationStatus($device,$newDeviceStatus);
-                $this->Device->updateStringsStatus($device,'resize');
+                $this->Device->updateStringsStatus($device,'resizing');
 
                 $this->setHeaderValue('x-bitlancer-url',REQUEST_URL . "?state=waitingForResize");
                 
-                $this->temporaryFailure("Waiting for device resize to complete");
+                return $this->temporaryFailure("Waiting for device resize to complete");
             }
             else {
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'error');
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
@@ -142,21 +134,29 @@ class InstancesController extends ResourcesController
         else {
             if($liveDeviceStatus == 'active' || $liveDeviceStatus == 'verify_resize'){
                 $this->Device->saveAttribute($device,'implementation.flavor_id',$flavorId);
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
-                $this->Device->updateStringsStatus($device,'active');
+                $this->Device->updateStringsStatus($device,'verify_resize');
             }
-            elseif($liveDeviceStatus == 'resize'){
+            elseif($liveDeviceStatus == 'resizing'){
                 $this->temporaryFailure("Waiting for device resize to complete");
             }
             else {
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'error');
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
 	}
 
-    public function confirmResize($deviceId,$confirm){
+    public function confirmResize($deviceId){
+        
+        return $this->confirmOrRevertResize($deviceId, true);
+    }
+
+    public function revertResize($deviceId){
+
+        return $this->confirmOrRevertResize($deviceId, false);
+    }
+
+    private function confirmOrRevertResize($deviceId, $confirm){
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -164,19 +164,20 @@ class InstancesController extends ResourcesController
         if(!$this->Device->exists($deviceId))
             throw new NotFoundException('Device does not exist');
 
-        $confirm = ($confirm == 'false' || $confirm == '0' ? false : true);
-
         $device = $this->Device->get($deviceId);
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
         if($liveDeviceStatus == 'verify_resize'){
             if($confirm)
-                $providerDriver->confirmResizeServer($providerDeviceId,true);
+                $providerDriver->confirmResizeServer($providerDeviceId, true);
             else {
                 $providerDriver->revertResizeServer($providerDeviceId);
                 $flavorId = $providerDriver->getServerFlavor($providerDeviceId);
@@ -184,10 +185,10 @@ class InstancesController extends ResourcesController
             }
 
             $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            $this->Device->updateStringsStatus($device,$newDeviceStatus);
         }
         else {
-            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             throw new UnexpectedProviderStatusException($liveDeviceStatus);
         }
     }
@@ -213,10 +214,10 @@ class InstancesController extends ResourcesController
             $providerDriver->rebuildServer($providerDeviceId,false,false);
 
             $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            $this->Device->updateStringsStatus($device,$newDeviceStatus);
         }
         else {
-            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             throw new UnexpectedProviderStatusException($liveDeviceStatus);
         }
 	}
@@ -248,7 +249,7 @@ class InstancesController extends ResourcesController
         if(!isset($getParams['state'])){
             $this->removeDeviceARecord($deviceId);
             $providerDriver->deleteServer($deviceAttrs['implementation.id']);
-            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             $this->setHeaderValue('x-bitlancer-url',REQUEST_URL . "?state=waitingForDelete");
             $this->temporaryFailure("Waiting for device delete to complete");
         }
@@ -257,7 +258,6 @@ class InstancesController extends ResourcesController
                 $this->Device->delete($deviceId);     
             }
             elseif($liveDeviceStatus == 'error' || $liveDeviceStatus == 'unknown'){
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
                 $this->Device->updateStringsStatus($device,'error');
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
@@ -288,10 +288,10 @@ class InstancesController extends ResourcesController
             $providerDriver->rebootServer($providerDeviceId);
 
             $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            $this->Device->updateStringsStatus($device,$newDeviceStatus);
         }
         else {
-            $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+            $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             throw new UnexpectedProviderStatusException($liveDeviceStatus);
         }
 	}
@@ -309,11 +309,12 @@ class InstancesController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],
+                                                $deviceAttrs['implementation.region_id']);
 
         $providerStatus = $providerDriver->getServerStatus($providerDeviceId);
 
-        $this->Device->updateImplementationStatus($device,$providerStatus);
+        $this->Device->updateStringsStatus($device,$providerStatus);
 
        $this->set(array(
             'status' => $providerStatus
