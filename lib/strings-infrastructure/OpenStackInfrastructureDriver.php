@@ -36,7 +36,17 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 	}
 
     protected function toGenericServerStatus($status){
-        return strtolower($status);
+
+        switch($status) {
+            case 'BUILD':
+                return 'building';
+            case 'RESIZE':
+                return 'resizing';
+            case 'DELETED':
+                return 'deleting';
+            default:
+                return strtolower($status);
+        }
     }
 	
 	public function createServer($name,$flavor,$image,$wait=false,$waitTimeout=600){
@@ -65,8 +75,7 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 	public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600){
 
 		$server = $this->connection->Server($serverID);
-		$flavor = $this->connection->Flavor($flavor);
-		$server->Resize($flavor);
+		$server->Resize($this->connection->Flavor($flavor));
 
         if($wait){
             $server->WaitFor('ACTIVE',$waitTimeout);

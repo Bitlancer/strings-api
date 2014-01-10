@@ -51,7 +51,11 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         if($status != 200)
             throw $this->statusToException($status, $resp);
 
-        return $resp['loadBalancer'];
+        $lb = $resp['loadBalancer'];
+
+        $lb['status'] = $this->toGenericStatus($lb['status']);
+
+        return $lb;
     }
 
     public function create($attrs) {
@@ -80,10 +84,16 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         if($status != 202)
             throw $this->statusToException($status, $resp);
 
-        return $resp['loadBalancer'];
+        $lb = $resp['loadBalancer'];
+
+        $lb['status'] = $this->toGenericStatus($lb['status']);
+
+        return $lb;
     }
 
     public function update($loadBalancerId, $attrs) {
+
+        $newLb = array();
 
         $updatableFields = array(
             'name',
@@ -92,7 +102,8 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
             'algorithm',
             'port',
             'timeout',
-            'httpsRedirect'
+            'httpsRedirect',
+            'sessionPersistence'
         );
 
         if(empty($attrs))
@@ -104,18 +115,55 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
             }
         }
 
-        $data = array(
-            'loadBalancer' => $attrs
-        );
+        /*
+         * Changing the protocol/port will disable session persistence
+         * so we need to set session persistence after everything else.
+         */
+        $setSessionPersistence = false;
+        $sessionPersistenceOption = false;
+        if(isset($attrs['sessionPersistence'])){
+            $setSessionPersistence = true;
+            $sessionPersistenceOption = $attrs['sessionPersistence'];
+            unset($attrs['sessionPersistence']);
+        }
 
-        $url = "/loadbalancers/$loadBalancerId";
+        //Update standard attrs
+        if(!empty($attrs)){
 
-        list($resp, $status) = $this->connection->request($url, 'PUT', $data);
+            $data = array(
+                'loadBalancer' => $attrs
+            );
 
-        if($status != 202)
-            throw $this->statusToException($status, $resp);
+            $url = "/loadbalancers/$loadBalancerId";
 
-        return $resp['loadBalancer'];
+            list($resp, $status) = $this->connection->request($url, 'PUT', $data);
+
+            if($status != 202)
+                throw $this->statusToException($status, $resp);
+
+            $newLb = $resp['loadBalancer'];
+        }
+
+        if($setSessionPersistence){
+
+            $this->waitForActive($loadBalancerId);
+
+            $data = array(
+                'sessionPersistence' => array(
+                    'persistenceType' => $sessionPersistenceOption
+                )
+            );
+            $url = "/loadbalancers/$loadBalancerId/sessionpersistence";
+            list($resp, $status) = $this->connection->request($url, 'PUT', $data);
+            if($status != 200 && $status != 202)
+                throw $this->statusToException($status, $resp);
+
+            $newLb = $resp['loadBalancer'];
+        }
+
+        $newLb['status'] = $this->toGenericStatus($newLb['status']);
+
+        return $newLb;
     }
 
     public function delete($loadBalancerId) {
@@ -158,7 +206,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 
         $idParamValues = array();
         foreach($nodes as $nodeId)
-            $idParamValues .= "id=$nodeId";
+            $idParamValues[] = "id=$nodeId";
         $url .= implode("&", $idParamValues);
 
         list($resp, $status) = $this->connection->request($url, 'DELETE');
@@ -169,7 +217,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         return $resp['nodes'];
     }
 
-    public function statusToException($status, $resp){
+    protected function statusToException($status, $resp){
 
         $resp = json_encode($resp);
 
@@ -195,5 +243,28 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 
     protected function toGenericStatus($status){
         return strtolower($status);
+    }
+
+    public function waitForActive($loadBalancerId, $timeout=60, $pollInterval=10){
+
+        $status = false;
+        $startTime = time();
+
+        while(true){
+            $result = $this->get($loadBalancerId);
+            $status = $result['status'];
+
+            if(!in_array($status,array('build','pending_update','pending_delete'))){
+                break; 
+            }
+            else
+                sleep($pollInterval);
+
+            if(time() - $startTime > $timeout){
+                throw new OperationTimeoutException();
+            }
+        }
+
+        return $status;
     }
 }

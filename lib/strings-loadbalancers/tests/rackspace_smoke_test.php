@@ -26,7 +26,7 @@ class TestLoadBalancer {
         $lbId = $this->testCreate();
         $this->testUpdate($lbId);
         $this->testNodes($lbId);
-        //$this->testDelete($lbId);
+        $this->testDelete($lbId);
     }
 
     private function testCreate(){
@@ -41,13 +41,16 @@ class TestLoadBalancer {
                 array(
                     'type' => 'PUBLIC'
                 )
+            ),
+            'sessionPersistence' => array(
+                'persistenceType' => 'HTTP_COOKIE'
             )
         ));
 
         $lbId = $result['id'];
 
-        $status = $this->waitForActive($lbId);
-        if($status != 'ACTIVE')
+        $status = $this->connection->waitForactive($lbId);
+        if($status != 'active')
             throw new \UnexpectedValueException("Unexpected load-balancer status $status");
 
         $result = $this->connection->get($lbId);
@@ -82,53 +85,53 @@ class TestLoadBalancer {
         );
         $result = $this->connection->update($lbId, $newAttrs);
 
-        $status = $this->waitForActive($lbId);
-        if($status != 'ACTIVE')
+        $status = $this->connection->waitForactive($lbId);
+        if($status != 'active')
             throw new \UnexpectedValueException("Unexpected load-balancer status $status");
 
+        //Check std attributes
         $result = $this->connection->get($lbId);
         $actualAttrs = array(
-            'name' => $results['name'],
-            'algorithm' => $results['algorithm'],
-            'protocol' => $results['protocol'],
-            'port' => $results['port']
+            'name' => $result['name'],
+            'algorithm' => $result['algorithm'],
+            'protocol' => $result['protocol'],
+            'port' => $result['port']
         );
         $expectedAttrs = $newAttrs;
         $diff = array_diff($actualAttrs, $expectedAttrs);
         if(!empty($diff)){
-            throw new \Exception('Load-balancer Attributes do not match.');
+            $diffStr = print_r($diff, true);
+            throw new \Exception("Load-balancer Attributes do not match: $diffStr");
         }
+
     }
 
     private function testNodes($lbId){
 
+        $node = array(
+            'address' => '10.181.9.204',
+            'port' => 80,
+            'condition' => 'ENABLED'
+        );
+
         //Add nodes
         $result = $this->connection->addNodes($lbId, array(
-            array(
-                'address' => '10.7.7.1',
-                'port' => 80,
-                'condition' => 'ENABLED'
-            ),
-            array(
-                'address' => '10.7.7.2',
-                'port' => 80,
-                'condition' => 'ENABLED'
-            ),
-            array(
-                'address' => '10.7.7.3',
-                'port' => 80,
-                'condition' => 'ENABLED'
-            )
+            $node,
         ));
 
-        $status = $this->waitForActive($lbId);
-        if(!$status != 'ACTIVE')
+        $status = $this->connection->waitForActive($lbId);
+        if($status != 'active')
             throw new \UnexpectedValueException("Unexpected load-balancer status $status");
 
-        //Get nodes
-        $result = $this->connection->getNodes($lbId);
-        print_r($result);
+        //Remove nodes
+        $liveNode = array_pop($result);
+        $nodeIds = array($liveNode['id']);
+        $result = $this->connection->removeNodes($lbId, $nodeIds);
 
+        $status = $this->connection->waitForActive($lbId);
+        if($status != 'active')
+            throw new \UnexpectedValueException("Unexpected load-balancer status $status");
+        
     }
 
     private function testDelete($lbId){
@@ -136,22 +139,4 @@ class TestLoadBalancer {
         $this->connection->delete($lbId);
     }
 
-    private function waitForActive($loadBalancerId, $pollInterval=10){
-
-        $status = false;
-
-        while(true){
-            $result = $this->connection->get($loadBalancerId);
-            $status = $result['status'];
-
-            if($status == 'ACTIVE')
-                break;
-            if($status == 'ERROR')
-                break;
-            else
-                sleep($pollInterval); 
-        }
-
-        return $status;
-    }
 }
