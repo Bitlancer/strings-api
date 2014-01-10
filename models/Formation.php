@@ -44,8 +44,12 @@ class Formation extends ResourceModel
     public function delete($id){
 
         $query = "
-            DELETE FROM formation
-            WHERE formation.id = :id
+            DELETE f, af, tf, tfs
+            FROM formation as f
+            LEFT JOIN application_formation as af on f.id = af.formation_id
+            LEFT JOIN team_formation as tf on f.id = tf.formation_id
+            LEFT JOIN team_formation_sudo as tfs on tf.id = tfs.team_formation_id
+            WHERE f.id = :id
         ";
 
         $queryParameters = array(

@@ -149,22 +149,15 @@ class Device extends ResourceModel
 
     public function delete($id){
 
-        //Delete hiera variables first
-        $deviceFqdn = $this->getAttribute($id,'dns.external.fqdn');
+        //Delete the device and related models
         $query = "
-            DELETE FROM hiera
-            WHERE hiera_key = :hieraKey
-        ";
-        $queryParameters = array(
-            ':hieraKey' => "fqdn/$deviceFqdn"
-        );
-        $this->query($query,$queryParameters); 
-
-        //Delete the device and device attributes
-        $query = "
-            DELETE d,da
+            DELETE d,da,ds,h,td,tds
             FROM device as d
-            JOIN device_attribute as da on d.id = da.device_id
+            LEFT JOIN device_attribute as da on d.id = da.device_id
+            LEFT JOIN device_dns as ds ON d.id = ds.device_id
+            LEFT JOIN hiera as h ON d.id = h.device_id
+            LEFT JOIN team_device as td ON d.id = td.device_id
+            LEFT JOIN team_device_sudo as tds ON td.id = tds.team_device_id
             WHERE d.id = :id
         ";
 
