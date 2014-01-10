@@ -13,8 +13,8 @@ class TestLoadBalancer {
             'region' => 'DFW',
             'identityApiEndpoint' => 'https://identity.api.rackspacecloud.com/v2.0/',
             'credentials' => array(
-                'username' => 'bitlancer3',
-                'secret' => '3d0baf0e7b9c4882aefadaf0837ce61b'
+                'username' => '',
+                'secret' => ''
             )
         );
 
