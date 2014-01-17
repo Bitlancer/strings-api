@@ -125,7 +125,7 @@ class FormationsController extends ResourcesController
                 throw new ServerException("Encountered an unknown device type $deviceType.");
             }
 
-            $this->QueueJob->add($organizationId,$jobUrl,'','post',60,15,30);
+            $this->QueueJob->add($organizationId,$jobUrl,'','post',90,40,30);
         }
     }
 }
