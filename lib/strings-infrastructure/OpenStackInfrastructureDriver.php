@@ -44,6 +44,8 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
                 return 'resizing';
             case 'DELETED':
                 return 'deleting';
+            case 'REBOOT':
+                return 'rebooting';
             default:
                 return strtolower($status);
         }

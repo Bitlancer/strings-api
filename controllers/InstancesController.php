@@ -179,7 +179,7 @@ class InstancesController extends ResourcesController
             if($confirm)
                 $providerDriver->confirmResizeServer($providerDeviceId, true);
             else {
-                $providerDriver->revertResizeServer($providerDeviceId);
+                $providerDriver->revertResizeServer($providerDeviceId, true);
                 $flavorId = $providerDriver->getServerFlavor($providerDeviceId);
                 $this->Device->saveAttribute($device,'implementation.flavor_id',$flavorId);
             }
@@ -279,13 +279,16 @@ class InstancesController extends ResourcesController
         $deviceAttrs = $device['device_attribute'];
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
         $liveDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
 
         if($liveDeviceStatus == 'active'){
 
-            $providerDriver->rebootServer($providerDeviceId);
+            $providerDriver->rebootServer($providerDeviceId,true);
 
             $newDeviceStatus = $providerDriver->getServerStatus($providerDeviceId);
             $this->Device->updateStringsStatus($device,$newDeviceStatus);
