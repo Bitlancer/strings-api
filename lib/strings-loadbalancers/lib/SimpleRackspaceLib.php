@@ -112,6 +112,7 @@ class SimpleRackspaceClient {
     }
 
     private function extractServiceUrl($auth_info, $service, $region){
+        $region = strtoupper($region);
         $valid_service_names = array();
         $service_catelog = $auth_info['access']['serviceCatalog'];
         foreach($service_catelog as $service_details){

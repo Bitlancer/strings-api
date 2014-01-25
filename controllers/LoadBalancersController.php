@@ -24,59 +24,117 @@ class LoadBalancersController extends ResourcesController
         $device = $this->Device->get($deviceId);
         $deviceAttrs = $device['device_attribute'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
         if(!isset($deviceAttrs['implementation.id'])){
 
             /*
             * When a LB has a shared VIP, it must wait for its peer to be created
             * so it can grab the VIP id from it. So until the peer has hit the
-            * active state, throw a 503. 
+            * active state, throw a 503.
             */
-            if($deviceAttrs['implementation.virtualIpType'] == 'shared'){
+            if(isset($deviceAttrs['implementation.peer_lb'])){
 
-                $peerLBName = $deviceAttrs['implementation.virtualIpPeer'];
-                $peerLB = $this->Device->getByName($organizationId,$peerLBName);
-                if(empty($peerLB))
+                $peerLBName = $deviceAttrs['implementation.peer_lb'];
+                $organizationId = $device['device.organization_id'];
+                $peerLB = $this->Device->getByName($organizationId, $peerLBName);
+                if(empty($peerLB)){
+                    $this->updateStringsStatus($device, 'error');
                     throw new Exception('Could not find peer load-balancer.');
-                if($peerLB['device.state'] == 'error')
+                }
+                if($peerLB['device.status'] == 'error') {
+                    $this->updateStringsStatus($device, 'error');
                     throw new Exception('Peer LB creation failed.');
-                elseif($peerLB['device.state'] == 'active'){
+                }
+                elseif($peerLB['device.status'] == 'active'){
                     $peerLBAttrs = $peerLB['device_attribute'];
-                    $virtualIpId = $peerLBAttrs['implementation.virtualIpId'];
-                    $this->Device->saveAttribute($device,'implementation.virtualIpId',$virtualIpId);
-                    $deviceAttrs['implementation.virtualIpId'] = $virtualIpId;
+                    $virtualIps = json_decode($peerLBAttrs['implementation.virtual_ips'], true);
+                    foreach($virtualIps as $ip){
+                        if($ip['type'] == strtoupper($deviceAttrs['implementation.virtual_ip_type'])){
+                            $this->Device->saveAttribute(
+                                $device,
+                                'implementation.peer_lb_virtual_ip_id',
+                                $ip['id']
+                            );
+                            $deviceAttrs['implementation.peer_lb_virtual_ip_id'] = $ip['id'];
+                            break;
+                        }
+                    }
                 }
                 else {
                     return $this->temporaryFailure("Waiting for peer LB build to complete."); 
                 }
             }
 
+            //Build the node list
+            $formationDevices = $this->Device->getByFormationId($device['device.formation_id']);
             $nodes = array();
-            if(isset($deviceAttrs['implementation.nodes']))
-                $nodes = json_decode($deviceAttrs['implementation.nodes'],true);
+            foreach($formationDevices as $d){
+                if($d['device_type.name'] == 'instance'){
+                    //A device in the building state will not have its ip address
+                    //set yet so we must wait
+                    if($d['device.status'] == 'building'){
+                        return $this->temporaryFailure("Waiting for node to finish building.");
+                    }
+                    else {
+                        $ipAttr = $this->virtualIpTypeToIpAttr(
+                            $deviceAttrs['implementation.virtual_ip_type']
+                        );
+                        $nodes[] = array(
+                            'address' => $this->Device->getAttribute(
+                                    $d['device.id'],
+                                    $ipAttr
+                            ),
+                            'port' => intval($deviceAttrs['implementation.port']),
+                            'condition' => 'ENABLED'
+                        );
+                    }
+                }
+            }
 
             $lb = array(
                 'name' => $device['device.name'],
                 'protocol' => $deviceAttrs['implementation.protocol'],
-                'port' => $deviceAttrs['implementation.port'],
+                'port' => intval($deviceAttrs['implementation.port']),
                 'algorithm' => $deviceAttrs['implementation.algorithm'],
-                'virtualIpType' => $deviceAttrs['implementation.virtualIpType'],
                 'nodes' => $nodes
             );
 
-            if($deviceAttrs['implementation.virtualIpType'] == 'shared'){
-                unset($lb['virtualIpType']);
-                $lb['virtaulIpId'] = $deviceAttrs['implementation.virtualIpId'];
+            if(isset($deviceAttrs['implementation.peer_lb_virtual_ip_id'])){
+                $lb['virtualIps'] = array(
+                    array(
+                        'id' => $deviceAttrs['implementation.peer_lb_virtual_ip_id']
+                    )
+                );
+            }
+            else {
+                $lb['virtualIps'] = array(
+                    array(
+                        'type' => strtoupper($deviceAttrs['implementation.virtual_ip_type'])
+                    )
+                );
             }
 
-            $providerDevice = $providerDriver->create($lb);
+            if(isset($deviceAttrs['implementation.session_persistence'])){
+                $lb['sessionPersistence'] = array(
+                    'persistenceType' => $deviceAttrs['implementation.session_persistence']
+                );
+            }
+
+            try {
+                $providerDevice = $providerDriver->create($lb);
+            }
+            catch(\Exception $e){
+                $this->Device->updateStringsStatus($device, 'error');
+                throw $e;
+            }
 
             $providerDeviceId = $providerDevice['id'];
             $this->Device->saveAttribute($device,'implementation.id',$providerDeviceId);
-
-            $newDeviceStatus = $providerDriver->getStatus($providerDeviceId);
-            $this->Device->updateImplementationStatus($device,$newDeviceStatus);
+            $this->Device->updateStringsStatus($device, 'building');
 
             $this->temporaryFailure("Waiting for device build to complete");
         }
@@ -84,27 +142,75 @@ class LoadBalancersController extends ResourcesController
 
             $providerDeviceId = $deviceAttrs['implementation.id'];
 
-            $liveDeviceStatus = $providerDriver->getStatus($providerDeviceId);
+            $providerDevice = $providerDriver->get($providerDeviceId);
+            $liveDeviceStatus = $providerDevice['status'];
 
-            if($liveDeviceStatus == 'build'){
+            if($liveDeviceStatus == 'building'){
                 $this->temporaryFailure("Waiting for device to spin up");
             }
             elseif($liveDeviceStatus == 'active'){
+               
+                //Virtual ip
+                $this->Device->saveAttribute(
+                    $device,
+                    'implementation.virtual_ips',
+                    json_encode($providerDevice['virtualIps'])
+                );
 
-                throw new Exception('Not implemented');
+                //Nodes
+                $nodes = "";
+                if(isset($providerDevice['nodes']))
+                    $nodes = $providerDevice['nodes'];
+                $this->Device->saveAttribute(
+                    $device,
+                    'implementation.nodes',
+                    json_encode($nodes)
+                );
 
-                //Need to set virtaulIpId and nodes
+                //Source addresses
+                foreach($providerDevice['sourceAddresses'] as $name => $addr){
+                    $attrSuffix = false;
+                    switch($name) {
+                        case 'ipv6Public':
+                           $attrSuffix = 'public.6';
+                           break;
+                        case 'ipv4Public':
+                            $attrSuffix = 'public.4';
+                            break;
+                        case 'ipv4Servicenet':
+                            $attrSuffix = 'private.4';
+                            break;
+                        case 'ipv6Servicenet':
+                            $attrSuffix = 'private.6';
+                            break;
+                        default:
+                            break;
+                    }
 
-                $nodes = $providerDevice['nodes'];
-                $this->Device->saveAttribute($device,'implementation.nodes',json_encode($nodes));
+                    if($attrSuffix){
+                        $this->Device->saveAttribute(
+                            $device,
+                            'implementation.address.' . $attrSuffix,
+                            $addr
+                        );
+                    }
+                }
 
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device, 'active');
             }
             else {
-                $this->Device->updateImplementationStatus($device,$liveDeviceStatus);
+                $this->Device->updateStringsStatus($device,$liveDeviceStatus);
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
+    }
+
+    private function virtualIpTypeToIpAttr($virtualIpType){
+
+        if($virtualIpType == "public")
+            return "implementation.address.public.4";
+        else
+            return "implementation.address.private.4";
     }
 
     public function delete($deviceId){
@@ -120,9 +226,19 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
-        $providerDriver->delete($providerDeviceId);
+        try {
+            $providerDriver->delete($providerDeviceId);
+        }
+        catch(\Exception $e){
+            $this->Device->updateStringsStatus($device, 'error');
+            throw $e;
+        }
+
         $this->Device->delete($deviceId);
     }
 
@@ -134,15 +250,9 @@ class LoadBalancersController extends ResourcesController
     }
 
     /**
-     * Update a load-balancers session persistence setting
+     * Manage nodes for a load-balancer
      */
-    public function updateSessionPersistence($deviceId){
-        throw new \Exception('Not implemented');
-    }
-
-    public function updateNodes($deviceId){
-
-        throw new \Exception('Not implemented');
+    public function manageNodes($deviceId){
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -155,12 +265,74 @@ class LoadBalancersController extends ResourcesController
 
         $providerDeviceId = $deviceAttrs['implementation.id'];
 
-        $providerDriver = $this->getProviderDriver($device['device.implementation_id'],$deviceAttrs['implementation.region_id']);
+        $providerDriver = $this->getProviderDriver(
+            $device['device.implementation_id'],
+            $deviceAttrs['implementation.region_id']
+        );
 
-        $nodes = $providerDriver->getNodes($providerDeviceId);
-        
-        $this->Device->saveAttribute($device,'implementation.nodes',json_encode($nodes));
-	}
+        $nodeChanges = $this->getPostParameters();
+
+        if(isset($nodeChanges['add'])){
+
+            $nodeAddrs = $nodeChanges['add'];
+            $lbPort = $deviceAttrs['implementation.port'];
+
+            $nodes = array();
+            foreach($nodeAddrs as $nodeAddr){
+                $nodes[] = array(
+                    'address' => $nodeAddr,
+                    'port' => $lbPort,
+                    'condition' => 'ENABLED'
+                );
+            }
+
+            try {
+                $providerDriver->addNodes($providerDeviceId, $nodes, true, 60);
+                $providerDevice = $providerDriver->get($providerDeviceId);
+
+                $this->Device->saveAttribute(
+                    $device,
+                    'implementation.nodes',
+                    json_encode($providerDevice['nodes'])
+                );
+            }
+            catch(\Exception $e) {
+                $this->Device->updateStringsStatus($device, 'error');
+                throw $e;
+            }
+        }
+
+        if(isset($nodeChanges['remove'])){
+
+            $nodeIds = array();
+            $nodeAddrs = $nodeChanges['remove'];
+            $nodes = json_decode($deviceAttrs['implementation.nodes'], true);
+            foreach($nodes as $node){
+                if(in_array($node['address'],$nodeAddrs)){
+                    $nodeIds[] = $node['id'];
+                }
+            }
+
+            try {
+                $providerDriver->removeNodes($providerDeviceId, $nodeIds, true, 60);
+                $providerDevice = $providerDriver->get($providerDeviceId);
+                $newNodes = array();
+                if(isset($providerDevice['nodes']))
+                    $newNodes = $providerDevice['nodes'];
+                $this->Device->saveAttribute(
+                    $device,
+                    'implementation.nodes',
+                    json_encode($newNodes)
+                );
+            }
+            catch(\Exception $e) {
+                $this->Device->updateStringsStatus($device, 'error');
+                throw $e;
+            }
+        }
+
+        $this->Device->updateStringsStatus($device, 'active');
+    }
 
     protected function getProviderDriver($implementationId,$region){
 

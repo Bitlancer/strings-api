@@ -58,7 +58,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         return $lb;
     }
 
-    public function create($attrs) {
+    public function create($attrs, $wait=false, $waitTimeout=60) {
 
         $requiredAttrs = array(
             'name',
@@ -87,6 +87,11 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         $lb = $resp['loadBalancer'];
 
         $lb['status'] = $this->toGenericStatus($lb['status']);
+
+        if($wait){
+            $status = $this->waitForActive($lb['id'], $waitTimeout);
+            $lb['status'] = $status;
+        }
 
         return $lb;
     }
@@ -186,7 +191,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         return $resp['nodes'];
     }
 
-    public function addNodes($loadBalancerId, $nodes) {
+    public function addNodes($loadBalancerId, $nodes, $wait=false, $waitTimeout=60) {
 
         $url = "/loadbalancers/$loadBalancerId/nodes";
 
@@ -197,10 +202,14 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         if($status != 200 && $status != 202)
             throw $this->statusToException($status, $resp);
 
+        if($wait){
+            $this->waitForActive($loadBalancerId, $waitTimeout);
+        }
+
         return $resp['nodes'];
     }
 
-    public function removeNodes($loadBalancerId, $nodes) {
+    public function removeNodes($loadBalancerId, $nodes, $wait=false, $waitTimeout=60) {
         
         $url = "/loadbalancers/$loadBalancerId/nodes?";
 
@@ -213,6 +222,10 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
         
         if($status != 200 && $status != 202)
             throw $this->statusToException($status, $resp);
+
+        if($wait){
+            $this->waitForActive($loadBalancerId, $waitTimeout);
+        }
 
         return $resp['nodes'];
     }
@@ -242,7 +255,15 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
     }
 
     protected function toGenericStatus($status){
-        return strtolower($status);
+
+        switch($status) {
+            case 'BUILD':
+                return 'building';
+            case 'DELETED':
+                return 'deleting';
+            default:
+                return strtolower($status);
+        }
     }
 
     public function waitForActive($loadBalancerId, $timeout=60, $pollInterval=10){
@@ -254,7 +275,7 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
             $result = $this->get($loadBalancerId);
             $status = $result['status'];
 
-            if(!in_array($status,array('build','pending_update','pending_delete'))){
+            if(!in_array($status,array('building','pending_update','pending_delete'))){
                 break; 
             }
             else

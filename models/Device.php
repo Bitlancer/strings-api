@@ -61,6 +61,26 @@ class Device extends ResourceModel
         return $entity;
     }
 
+    public function getByName($organizationId, $name){
+
+        $query = "
+            SELECT id
+            FROM device
+            WHERE organization_id = :org_id and
+              device.name = :name
+        ";
+        $queryParameters = array(
+            ':org_id' => $organizationId,
+            ':name' => $name
+        );
+
+        $device = $this->fetch($query, $queryParameters);
+        if(empty($device))
+            return false;
+
+        return $this->get($device['device.id']);
+    }
+
     public function getByFormationId($formationId){
 
         $query = "

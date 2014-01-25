@@ -25,11 +25,7 @@ Router::registerRoute(array('GET','POST'),'/Instances/updateServerStatuses/:impl
 //Load balancers
 Router::registerRoute(array('GET','POST'),'/LoadBalancers/create/:deviceId','LoadBalancers','create');
 Router::registerRoute(array('GET','POST'),'/LoadBalancers/delete/:deviceId','LoadBalancers','delete');
-Router::registerRoute(array('GET','POST'),'/LoadBalancers/algorithms/:implementationId/:region','LoadBalancers','getAlgorithms');
-Router::registerRoute(array('GET','POST'),'/LoadBalancers/protocols/:implementationId/:region','LoadBalancers','getProtocols');
-Router::registerRoute(array('GET','POST'),'/LoadBalancers/updateNodes/:deviceId','LoadBalancers','updateNodes');
-Router::registerRoute(array('GET','POST'),'/LoadBalancers/addNode/:deviceId/:nodeIp/:nodePort','LoadBalancers','addNode');
-Router::registerRoute(array('GET','POST'),'/LoadBalancers/removeNode/:deviceId/:nodeId','LoadBalancers','removeNode');
+Router::registerRoute(array('GET','POST'),'/LoadBalancers/manageNodes/:deviceId','LoadBalancers','manageNodes');
 
 //DNS
 Router::registerRoute(array('GET','POST'),'/Dns/addDeviceARecord/:deviceId','Dns','addDeviceARecord');
