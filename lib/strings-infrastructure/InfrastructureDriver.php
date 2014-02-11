@@ -13,7 +13,7 @@ abstract class InfrastructureDriver
 	abstract protected function parseConnectionParameters($params);
 	abstract protected function getProviderConnection();
 	
-	abstract public function createServer($name,$flavor,$image,$wait=false,$waitTimeout=600);
+	abstract public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600);
 	abstract public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600);
     abstract public function confirmResizeServer($serverID,$wait=false,$waitTimeout=600);
     abstract public function revertResizeServer($serverID,$wait=false,$waitTimeout=600);

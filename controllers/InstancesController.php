@@ -24,6 +24,9 @@ class InstancesController extends ResourcesController
         $device = $this->Device->get($deviceId); 
         $deviceAttrs = $device['device_attribute'];
 
+        $impl = $this->Implementation->get($device['device.implementation_id']);
+        $implAttrs = $impl['implementation_attribute'];
+
         if($device['device.status'] == 'active')
             throw new ClientException('This device is already running');
 
@@ -35,12 +38,19 @@ class InstancesController extends ResourcesController
         //If implementation.id isn't set, we haven't called create()
         if(!isset($deviceAttrs['implementation.id'])){
 
+            $network = false;
+            if(isset($implAttrs['default_cloud_network'])){
+                $network = $implAttrs['default_cloud_network'];
+            }
+
             $providerDevice = array();
             try {
                 $providerDevice = $providerDriver->createServer(
                     $deviceAttrs['dns.external.fqdn'],
                     $deviceAttrs['implementation.flavor_id'],
-                    $deviceAttrs['implementation.image_id']);
+                    $deviceAttrs['implementation.image_id'],
+                    $network
+                );
             }
             catch(\Exception $e){
                 $this->Device->updateStringsStatus($device, 'error');

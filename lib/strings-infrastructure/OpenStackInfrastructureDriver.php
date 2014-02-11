@@ -51,13 +51,23 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         }
     }
 	
-	public function createServer($name,$flavor,$image,$wait=false,$waitTimeout=600){
+	public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600){
+
+        $networks = array(
+            $this->connection->network(RAX_PUBLIC),
+            $this->connection->network(RAX_PRIVATE)
+        );
+
+        if($network !== false){
+            $networks[] = $this->connection->network($network);
+        }
 
 		$server = $this->connection->Server();
 		$server->Create(array(
 			'name' => $name,
 			'image' => $this->connection->Image($image),
-			'flavor' => $this->connection->Flavor($flavor)
+			'flavor' => $this->connection->Flavor($flavor),
+            'networks' => $networks
 		));
 
 		if($wait){
@@ -199,11 +209,10 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 
         $ipCollection = $server->ips();
         foreach($ipCollection as $network => $networkIPs){
+            $network = str_replace(' ','_',$network);
             foreach($networkIPs as $ip){
-
                 if(!isset($ips[$network]))
                     $ips[$network] = array();
-
                 $ips[$network][$ip->version] = $ip->addr;
             }
         }
