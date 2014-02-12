@@ -254,6 +254,10 @@ class InstancesController extends ResourcesController
             $this->Device->delete($deviceId);
             return;
         }
+        catch(\Guzzle\Http\Exception\ClientErrorResponseException $e){
+            $this->Device->delete($deviceId);
+            return;
+        }
 
         $getParams = $this->getGetParameters();
         if(!isset($getParams['state'])){

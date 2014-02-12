@@ -12,8 +12,7 @@ class ViewHandler extends \Slim\View {
 
 		$statusCode = $slimResponse->status();
 		$data = $this->data['data'];
-		$errorMessage = (array_key_exists('errorMessage',$this->data) ? $this->data['errorMessage'] : '');
-		
+        $errorMessage = $this->data['errorMessage'];
 
 		//Wrap response
         $response = array(

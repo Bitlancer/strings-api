@@ -105,16 +105,8 @@ class Controller {
 
 	public static function loadLibrary($library){
 
-		//If library is a single file, load it
-		$libraryFile = LIB_DIR . DS . $library . ".php";
-		if(file_exists($libraryFile)){
-			require_once($libraryFile);
-			return;
-		}
-
-		//If library is a directory, load autoload file
-		$libraryDir = LIB_DIR . DS . $library;
-		$libraryAutoload = $libraryDir . DS . 'Autoload.php';
+		$libraryDir = VENDOR_ALT_DIR . DS . $library;
+		$libraryAutoload = $libraryDir . DS . 'autoload.php';
 		if(file_exists($libraryDir) && is_dir($libraryDir) && file_exists($libraryAutoload)){
 			require_once($libraryAutoload);
 			return;
