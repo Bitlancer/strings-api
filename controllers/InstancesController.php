@@ -22,10 +22,7 @@ class InstancesController extends ResourcesController
             throw new NotFoundException('Device does not exist');
 
         $device = $this->Device->get($deviceId); 
-        $deviceAttrs = $device['device_attribute'];
-
-        $impl = $this->Implementation->get($device['device.implementation_id']);
-        $implAttrs = $impl['implementation_attribute'];
+        $implementation = $this->Implementation->get($device['device.implementation_id']);
 
         if($device['device.status'] == 'active')
             throw new ClientException('This device is already running');
@@ -38,19 +35,9 @@ class InstancesController extends ResourcesController
         //If implementation.id isn't set, we haven't called create()
         if(!isset($deviceAttrs['implementation.id'])){
 
-            $network = false;
-            if(isset($implAttrs['default_cloud_network'])){
-                $network = $implAttrs['default_cloud_network'];
-            }
-
             $providerDevice = array();
             try {
-                $providerDevice = $providerDriver->createServer(
-                    $deviceAttrs['dns.external.fqdn'],
-                    $deviceAttrs['implementation.flavor_id'],
-                    $deviceAttrs['implementation.image_id'],
-                    $network
-                );
+                $providerDevice = $providerDriver->createServer($device, $implementation);
             }
             catch(\Exception $e){
                 $this->Device->updateStringsStatus($device, 'error');
@@ -58,8 +45,11 @@ class InstancesController extends ResourcesController
             }
 
             $providerDeviceId = $providerDevice['id'];
-            $this->Device->saveAttribute($device,'implementation.id',
-                                        $providerDeviceId);
+            $this->Device->saveAttribute(
+                $device,
+                'implementation.id',
+                $providerDeviceId
+            );
 
             $this->Device->updateStringsStatus($device, 'building');
             return $this->temporaryFailure("Waiting for device build to complete");
@@ -405,13 +395,10 @@ class InstancesController extends ResourcesController
 
     protected function getProviderDriver($implementationId,$region){
 
-        $implementation = $this->Implementation->get($implementationId);
-        $implementationAttrs = $implementation['implementation_attribute'];
-
-        $infrastructureProvider = strtolower($implementation['provider.name']);
+        $provider = strtolower($this->getProviderName($implementationId));
 
         $providerDriver = null;
-        switch($infrastructureProvider){
+        switch($provider){
             case 'rackspace':
                 $connParameters = array(
                     'credentials' => array(
@@ -423,6 +410,14 @@ class InstancesController extends ResourcesController
                 );
                 $providerDriver = new \StringsInfrastructure\RackspaceInfrastructureDriver($connParameters);
                 break;
+            case 'amazon':
+                $connParameters = array(
+                    'key' => $implmentationAttrs['key'],
+                    'secret' => $implementationAttrs['secret'],
+                    'region' => $region
+                );
+                $providerDriver = new \StringsInfrastructure\AmazonInfrastructureDriver($connParameters);
+                break;
             case 'openstack':
                 throw new ServerException('Not implemented');
                 $connParameters = array();
@@ -433,5 +428,12 @@ class InstancesController extends ResourcesController
         }
 
         return $providerDriver;
+    }
+
+    protected function getProviderName($implementationId){
+
+        $implementation = $this->Implementation->get($implementationId);
+        $implementationAttrs = $implementation['implementation_attribute'];
+        return $implementation['provider.name'];
     }
 }

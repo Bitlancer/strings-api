@@ -50,14 +50,33 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         }
     }
 	
-	public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600){
+	public function createServer($device, $implementation, $wait=false, $waitTimeout=600){
+
+        $deviceAttrs = $device['device_attribute'];
+        $implAttrs = $implementation['implementation_attribute'];
+
+        $createAttrs = array(
+            'name' => $deviceAttrs['dns.external.fqdn'],
+            'image' => $this->connection->Image(
+                $deviceAttrs['implementation.image_id']
+            ),
+            'flavor' => $this->connection->Flavor(
+                $deviceAttrs['implementation.flavor_id']
+            ),
+            'networks' => array(
+                $this->connection->network(\OpenCloud\Compute\Network::RAX_PUBLIC),
+                $this->connection->network(\OpenCloud\Compute\Network::RAX_PRIVATE)
+            )
+        );
+
+        if(isset($implAttrs['default_cloud_network'])){
+            $createAttrs['networks'][] = $this->connection->network(
+                $implAttrs['default_cloud_network']
+            );
+        }
 
 		$server = $this->connection->Server();
-		$server->Create(array(
-			'name' => $name,
-			'image' => $this->connection->Image($image),
-			'flavor' => $this->connection->Flavor($flavor)
-		));
+		$server->Create($createAttrs);
 
 		if($wait){
 			$server->WaitFor('ACTIVE',$waitTimeout);
@@ -67,7 +86,6 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
 
 		$server = array(
             'id' => $server->id,
-            'rootPassword' => $server->adminPass
         );
 
 		return $server;
