@@ -2,6 +2,8 @@
 
 namespace StringsInfrastructure;
 
+define('RAXSDK_CONNECTTIMEOUT', 10);
+
 class RackspaceInfrastructureDriver extends OpenStackInfrastructureDriver 
 {
 	protected function parseConnectionParameters($connParams){
