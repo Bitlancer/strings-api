@@ -126,7 +126,7 @@ class RemoteExecutionController extends ResourcesController
 
     private function createTempRemoteDir($execSshCmd, $relatedModelName, $execId){
 
-        $remoteDirName = "$relatedModelName.$execId";
+        $remoteDirName = "$execId";
 
         $cmd = "mkdir ~/$remoteDirName";
         list($status,$output) = $execSshCmd($cmd);
