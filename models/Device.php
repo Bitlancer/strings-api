@@ -237,11 +237,10 @@ class Device extends ResourceModel
 
         //Get roles & profiles
         $query = "
-            SELECT role.id,profile.*
-            FROM role
-            JOIN role_profile ON role.id = role_profile.role_id
-            JOIN profile ON role_profile.profile_id = profile.id
-            WHERE role.id IN (
+            SELECT profile.*,role_profile.role_id
+            FROM profile
+            JOIN role_profile ON role_profile.profile_id = profile.id
+            WHERE role_profile.role_id IN (
                 SELECT device.role_id
                 FROM device
                 WHERE device.formation_id = :formationId
@@ -255,17 +254,20 @@ class Device extends ResourceModel
         //Group by role id
         $profilesGroupedByRoleId = array();
         foreach($rolesProfiles as $profile){
-            $roleId = $profile['role.id'];
-            if(isset($profilesGroupedByRoleId[$roleId]))
-                $profilesGroupedByRoleId[$roleId][] = $profile;
-            else
-                $profilesGroupedByRoleId[$roleId] = array($profile);
+            $roleId = $profile['role_profile.role_id'];
+            $roleId = $profile['role_profile.role_id'];
+            if(!isset($profilesGroupedByRoleId[$roleId]))
+                $profilesGroupedByRoleId[$roleId] = array();
+            $profilesGroupedByRoleId[$roleId][] = $profile;
         }
       
         $devicesWithProfiles = array();
         foreach($devices as $device){
             $roleId = $device['device.role_id'];
-            $device['profiles'] = $profilesGroupedByRoleId[$roleId];
+            if(isset($profilesGroupedByRoleId[$roleId]))
+                $device['profiles'] = $profilesGroupedByRoleId[$roleId];
+            else
+                $device['profiles'] = array();
             $devicesWithProfiles[] = $device;
         }
 
