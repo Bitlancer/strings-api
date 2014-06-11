@@ -255,7 +255,6 @@ class Device extends ResourceModel
         $profilesGroupedByRoleId = array();
         foreach($rolesProfiles as $profile){
             $roleId = $profile['role_profile.role_id'];
-            $roleId = $profile['role_profile.role_id'];
             if(!isset($profilesGroupedByRoleId[$roleId]))
                 $profilesGroupedByRoleId[$roleId] = array();
             $profilesGroupedByRoleId[$roleId][] = $profile;
