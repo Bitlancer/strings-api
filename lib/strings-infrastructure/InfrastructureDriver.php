@@ -2,19 +2,19 @@
 
 namespace StringsInfrastructure;
 
-abstract class InfrastructureDriver
-{
-	public function __construct($connectionParameters){
+abstract class InfrastructureDriver {
 
-		$this->parseConnectionParameters($connectionParameters);
-		$this->connection = $this->getProviderConnection();
-	}
-	
-	abstract protected function parseConnectionParameters($params);
-	abstract protected function getProviderConnection();
-	
-	abstract public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600);
-	abstract public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600);
+    public function __construct($connectionParameters){
+
+        $this->parseConnectionParameters($connectionParameters);
+        $this->connection = $this->getProviderConnection();
+    }
+    
+    abstract protected function parseConnectionParameters($params);
+    abstract protected function getProviderConnection();
+    
+    abstract public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600);
+    abstract public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600);
     abstract public function confirmResizeServer($serverID,$wait=false,$waitTimeout=600);
     abstract public function revertResizeServer($serverID,$wait=false,$waitTimeout=600);
 
@@ -22,7 +22,7 @@ abstract class InfrastructureDriver
     abstract public function deleteServer($serverID,$wait=false,$waitTimeout=600);
     abstract public function rebootServer($serverID,$wait=false,$waitTimeout=300);
 
-	abstract public function getServerStatus($serverID);
+    abstract public function getServerStatus($serverID);
 
     abstract public function getServerFlavor($serverID);
 
@@ -36,15 +36,15 @@ abstract class InfrastructureDriver
 
     abstract public function getServers($filter=array());
 
-	abstract public function getImages();
-	abstract public function getFlavors(); 
+    abstract public function getImages();
+    abstract public function getFlavors(); 
 
     abstract public function getImageSchedule($serverID);
     abstract public function createImageSchedule($serverID,$retention);
     abstract public function updateImageSchedule($serverID,$retention);
     abstract public function deleteImageSchedule($serverID);
 
-	public static function validDataStructure($validDataStruc,$compDataStruc){
+    public static function validDataStructure($validDataStruc,$compDataStruc){
 
         if($diff = array_diff_key($validDataStruc,$compDataStruc))
             return false;

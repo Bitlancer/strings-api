@@ -7,33 +7,33 @@ require(__DIR__ . DIRECTORY_SEPARATOR . 'lib' . DIRECTORY_SEPARATOR . 'php-openc
 
 class OpenStackInfrastructureDriver extends InfrastructureDriver
 {
-	protected function parseConnectionParameters($connParams){
-		
-		$validConnectionDataStruct = array(
-			'region' => '',
+    protected function parseConnectionParameters($connParams){
+        
+        $validConnectionDataStruct = array(
+            'region' => '',
             'identityApiEndpoint' => '',
             'credentials' => array(
-            	'username' => '',
-               	'secret' => ''
+                'username' => '',
+                'secret' => ''
             )
-		);
-		
-		if(!self::validDataStructure($validConnectionDataStruct,$connParams))
-			throw new \InvalidArgumentException('One or more required provider connection parameters is missing or is invalid.');
-		
-		$this->region = $connParams['region'];
-		$this->identityAPIEndpoint = $connParams['identityApiEndpoint'];
-		$this->connectionCredentials = array(
-			'username' => $connParams['credentials']['username'],
-			'password' => $connParams['credentials']['secret']
-		);
-	}
-	
-	protected function getProviderConnection(){
-	
-		$connection = new \OpenCloud\OpenStack($this->identityAPIEndpoint,$this->connectionCredentials);
-		return $connection->Compute('cloudServersOpenStack');
-	}
+        );
+        
+        if(!self::validDataStructure($validConnectionDataStruct,$connParams))
+            throw new \InvalidArgumentException('One or more required provider connection parameters is missing or is invalid.');
+        
+        $this->region = $connParams['region'];
+        $this->identityAPIEndpoint = $connParams['identityApiEndpoint'];
+        $this->connectionCredentials = array(
+            'username' => $connParams['credentials']['username'],
+            'password' => $connParams['credentials']['secret']
+        );
+    }
+    
+    protected function getProviderConnection(){
+    
+        $connection = new \OpenCloud\OpenStack($this->identityAPIEndpoint,$this->connectionCredentials);
+        return $connection->Compute('cloudServersOpenStack');
+    }
 
     protected function toGenericServerStatus($status){
 
@@ -50,8 +50,8 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
                 return strtolower($status);
         }
     }
-	
-	public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600){
+    
+    public function createServer($name,$flavor,$image,$network=false,$wait=false,$waitTimeout=600){
 
         $networks = array(
             $this->connection->network(RAX_PUBLIC),
@@ -62,32 +62,13 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
             $networks[] = $this->connection->network($network);
         }
 
-		$server = $this->connection->Server();
-		$server->Create(array(
-			'name' => $name,
-			'image' => $this->connection->Image($image),
-			'flavor' => $this->connection->Flavor($flavor),
+        $server = $this->connection->Server();
+        $server->Create(array(
+            'name' => $name,
+            'image' => $this->connection->Image($image),
+            'flavor' => $this->connection->Flavor($flavor),
             'networks' => $networks
-		));
-
-		if($wait){
-			$server->WaitFor('ACTIVE',$waitTimeout);
-            if($server->Status() != 'ACTIVE')
-                throw new OperationTimeoutException();
-        }
-
-		$server = array(
-            'id' => $server->id,
-            'rootPassword' => $server->adminPass
-        );
-
-		return $server;
-	}
-	
-	public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600){
-
-		$server = $this->connection->Server($serverID);
-		$server->Resize($this->connection->Flavor($flavor));
+        ));
 
         if($wait){
             $server->WaitFor('ACTIVE',$waitTimeout);
@@ -95,7 +76,26 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
                 throw new OperationTimeoutException();
         }
 
-	}
+        $server = array(
+            'id' => $server->id,
+            'rootPassword' => $server->adminPass
+        );
+
+        return $server;
+    }
+    
+    public function resizeServer($serverID,$flavor,$wait=false,$waitTimeout=600){
+
+        $server = $this->connection->Server($serverID);
+        $server->Resize($this->connection->Flavor($flavor));
+
+        if($wait){
+            $server->WaitFor('ACTIVE',$waitTimeout);
+            if($server->Status() != 'ACTIVE')
+                throw new OperationTimeoutException();
+        }
+
+    }
 
     public function confirmResizeServer($serverID,$wait=false,$waitTimeout=600){
 
@@ -121,16 +121,16 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         }
     }
 
-	public function rebuildServer($serverID,$flavorId=false,$imageId=false,$wait=false,$waitTimeout=600){
+    public function rebuildServer($serverID,$flavorId=false,$imageId=false,$wait=false,$waitTimeout=600){
 
-		$server = $this->connection->Server($serverID);
+        $server = $this->connection->Server($serverID);
 
         if($flavorId === false)
             $flavorId = $server->flavor->id;
         if($imageId === false)
             $imageId = $server->image->id;
 
-		$server->Rebuild(array(
+        $server->Rebuild(array(
             'name' => $server->name,
             'flavor' => $this->connection->Flavor($flavorId),
             'image' => $this->connection->Image($imageId)
@@ -141,37 +141,37 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
             if($server->Status() != 'ACTIVE')
                 throw new OperationTimeoutException();
         }
-	}
-	
-	public function deleteServer($serverID,$wait=false,$waitTimeout=600){
+    }
+    
+    public function deleteServer($serverID,$wait=false,$waitTimeout=600){
 
-		$server = $this->connection->Server($serverID);
-		$server->Delete();
+        $server = $this->connection->Server($serverID);
+        $server->Delete();
 
         if($wait){
             $server->WaitFor('DELETED',$waitTimeout);
             if($server->Status() != 'DELETED')
                 throw new OperationTimeoutException();
         }
-	}
-	
-	public function rebootServer($serverID,$wait=false,$waitTimeout=300){
+    }
+    
+    public function rebootServer($serverID,$wait=false,$waitTimeout=300){
 
-		$server = $this->connection->Server($serverID);
-		$server->Reboot();
+        $server = $this->connection->Server($serverID);
+        $server->Reboot();
 
         if($wait){
             $server->WaitFor('ACTIVE',$waitTimeout);
             if($server->Status() != 'ACTIVE')
                 throw new OperationTimeoutException();
         }
-	}
+    }
 
-	public function getServerStatus($serverID){
+    public function getServerStatus($serverID){
 
-		$server = $this->connection->Server($serverID);
-		return $this->toGenericServerStatus($server->status);
-	}
+        $server = $this->connection->Server($serverID);
+        return $this->toGenericServerStatus($server->status);
+    }
 
     public function getServerPublicIPv4Address($serverID){
         return $this->getServerIP($serverID);
@@ -236,35 +236,35 @@ class OpenStackInfrastructureDriver extends InfrastructureDriver
         return $servers;
     }
 
-	public function getImages(){
+    public function getImages(){
 
-		$images = array();
-	
-		$imageCollection = $this->connection->imageList();
-		while($image = $imageCollection->Next()){
-			$images[] = array(
-				'id' => $image->id,
-				'name' => $image->name
-			);
-		}
+        $images = array();
+    
+        $imageCollection = $this->connection->imageList();
+        while($image = $imageCollection->Next()){
+            $images[] = array(
+                'id' => $image->id,
+                'name' => $image->name
+            );
+        }
 
-		return $images;
-	}
+        return $images;
+    }
 
-	public function getFlavors(){
+    public function getFlavors(){
 
-		$flavors = array();
-		
-		$flavorCollection = $this->connection->flavorList();
-		while($flavor = $flavorCollection->Next()){
-			$flavors[] = array(
-				'id' => $flavor->id,
-				'name' => $flavor->name
-			);
-		}
+        $flavors = array();
+        
+        $flavorCollection = $this->connection->flavorList();
+        while($flavor = $flavorCollection->Next()){
+            $flavors[] = array(
+                'id' => $flavor->id,
+                'name' => $flavor->name
+            );
+        }
 
-		return $flavors;
-	}
+        return $flavors;
+    }
 
     public function getServerFlavor($serverID){
 

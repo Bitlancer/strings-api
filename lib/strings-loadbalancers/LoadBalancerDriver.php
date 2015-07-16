@@ -4,25 +4,25 @@ namespace StringsLoadBalancer;
 
 abstract class LoadBalancerDriver
 {
-	public function __construct($connectionParameters){
+    public function __construct($connectionParameters){
 
-		$this->parseConnectionParameters($connectionParameters);
-		$this->connection = $this->getProviderConnection();
-	}
-	
-	abstract protected function parseConnectionParameters($params);
-	abstract protected function getProviderConnection();
+        $this->parseConnectionParameters($connectionParameters);
+        $this->connection = $this->getProviderConnection();
+    }
+    
+    abstract protected function parseConnectionParameters($params);
+    abstract protected function getProviderConnection();
 
     abstract public function get($loadBalancerId);
     abstract public function create($attrs, $wait, $waitTimeout);
     abstract public function update($loadBalancerId, $attrs);
-	abstract public function delete($loadBalancerId);
+    abstract public function delete($loadBalancerId);
 
-	abstract public function getNodes($loadBalancerId);
-	abstract public function addNodes($loadBalancerId, $nodes, $wait, $waitTimeout);
-	abstract public function removeNodes($loadBalancerId, $nodes, $wait, $waitTimeout);
+    abstract public function getNodes($loadBalancerId);
+    abstract public function addNodes($loadBalancerId, $nodes, $wait, $waitTimeout);
+    abstract public function removeNodes($loadBalancerId, $nodes, $wait, $waitTimeout);
 
-	public static function validDataStructure($validDataStruc,$compDataStruc){
+    public static function validDataStructure($validDataStruc,$compDataStruc){
 
         if($diff = array_diff_key($validDataStruc,$compDataStruc))
             return false;

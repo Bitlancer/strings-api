@@ -9,29 +9,29 @@ use \SimpleRackspaceLib\SimpleRackspaceClient;
 
 class RackspaceLoadBalancerDriver extends LoadBalancerDriver
 {
-	protected function parseConnectionParameters($connParams){
-		
-		$validConnectionDataStruct = array(
-			'region' => '',
+    protected function parseConnectionParameters($connParams){
+        
+        $validConnectionDataStruct = array(
+            'region' => '',
             'identityApiEndpoint' => '',
             'credentials' => array(
-            	'username' => '',
-               	'secret' => ''
+                'username' => '',
+                'secret' => ''
             )
-		);
-		
-		if(!self::validDataStructure($validConnectionDataStruct,$connParams))
-			throw new \InvalidArgumentException('One or more required provider connection parameters is missing or is invalid.');
-		
-		$this->region = $connParams['region'];
-		$this->identityAPIEndpoint = $connParams['identityApiEndpoint'];
-		$this->connectionCredentials = array(
-			'username' => $connParams['credentials']['username'],
-			'apiKey' => $connParams['credentials']['secret']
-		);
-	}
-	
-	protected function getProviderConnection(){
+        );
+        
+        if(!self::validDataStructure($validConnectionDataStruct,$connParams))
+            throw new \InvalidArgumentException('One or more required provider connection parameters is missing or is invalid.');
+        
+        $this->region = $connParams['region'];
+        $this->identityAPIEndpoint = $connParams['identityApiEndpoint'];
+        $this->connectionCredentials = array(
+            'username' => $connParams['credentials']['username'],
+            'apiKey' => $connParams['credentials']['secret']
+        );
+    }
+    
+    protected function getProviderConnection(){
 
         $connection = new SimpleRackspaceClient(
             $this->connectionCredentials['username'],
@@ -40,9 +40,9 @@ class RackspaceLoadBalancerDriver extends LoadBalancerDriver
             'cloudLoadBalancers',
             $this->region
         );
-	
-		return $connection;
-	}
+    
+        return $connection;
+    }
 
     public function get($loadBalancerId) {
         

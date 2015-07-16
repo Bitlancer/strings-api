@@ -7,16 +7,16 @@ class InstancesController extends ResourcesController
 
     protected $uses = array('Device','Implementation','Config');
 
-	public function __construct(){
+    public function __construct(){
 
-		parent::__construct();
-		self::loadLibrary('strings-infrastructure');
-	}
+        parent::__construct();
+        self::loadLibrary('strings-infrastructure');
+    }
 
-	public function create($deviceId){
+    public function create($deviceId){
 
-		if(empty($deviceId))
-			throw new InvalidArgumentException('Device id is required');
+        if(empty($deviceId))
+            throw new InvalidArgumentException('Device id is required');
 
         if(!$this->Device->exists($deviceId))
             throw new NotFoundException('Device does not exist');
@@ -104,9 +104,9 @@ class InstancesController extends ResourcesController
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
-	}
+    }
 
-	public function resize($deviceId, $flavorId){
+    public function resize($deviceId, $flavorId){
 
        if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -154,7 +154,7 @@ class InstancesController extends ResourcesController
                 throw new UnexpectedProviderStatusException($liveDeviceStatus);
             }
         }
-	}
+    }
 
     public function confirmResize($deviceId){
         
@@ -203,7 +203,7 @@ class InstancesController extends ResourcesController
         }
     }
 
-	public function rebuild($deviceId){
+    public function rebuild($deviceId){
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -230,9 +230,9 @@ class InstancesController extends ResourcesController
             $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             throw new UnexpectedProviderStatusException($liveDeviceStatus);
         }
-	}
+    }
 
-	public function delete($deviceId){
+    public function delete($deviceId){
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -275,9 +275,9 @@ class InstancesController extends ResourcesController
                 $this->temporaryFailure("Waiting for device delete to complete");
             }
         }
-	}
+    }
 
-	public function reboot($deviceId){
+    public function reboot($deviceId){
 
          if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -307,9 +307,9 @@ class InstancesController extends ResourcesController
             $this->Device->updateStringsStatus($device,$liveDeviceStatus);
             throw new UnexpectedProviderStatusException($liveDeviceStatus);
         }
-	}
+    }
 
-	public function getStatus($deviceId){
+    public function getStatus($deviceId){
 
         if(empty($deviceId))
             throw new InvalidArgumentException('Device id is required');
@@ -332,7 +332,7 @@ class InstancesController extends ResourcesController
        $this->set(array(
             'status' => $providerStatus
         )); 
-	}
+    }
 
     public function updateServerStatuses($implementationId,$region){
         

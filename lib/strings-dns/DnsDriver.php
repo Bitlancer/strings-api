@@ -4,14 +4,14 @@ namespace StringsDns;
 
 abstract class DnsDriver
 {
-	public function __construct($connectionParameters){
+    public function __construct($connectionParameters){
 
-		$this->parseConnectionParameters($connectionParameters);
-		$this->connection = $this->getProviderConnection();
-	}
-	
-	abstract protected function parseConnectionParameters($params);
-	abstract protected function getProviderConnection();
+        $this->parseConnectionParameters($connectionParameters);
+        $this->connection = $this->getProviderConnection();
+    }
+    
+    abstract protected function parseConnectionParameters($params);
+    abstract protected function getProviderConnection();
 
     abstract public function addDomainRecord($domainId,$dnsRecord,$wait=false,$waitTimeout=300);
 
@@ -21,7 +21,7 @@ abstract class DnsDriver
 
     abstract public function removeDomainRecord($domainId,$recordId,$wait=false,$waitTimeout=300);
 
-	public static function validDataStructure($validDataStruc,$compDataStruc){
+    public static function validDataStructure($validDataStruc,$compDataStruc){
 
         if($diff = array_diff_key($validDataStruc,$compDataStruc))
             return false;
